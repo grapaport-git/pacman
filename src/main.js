@@ -88,11 +88,11 @@ function handleKey(e) {
   // Progression map
   if (game && game.state === 'map') {
     if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-      mapSelectedLevel = Math.max(1, mapSelectedLevel - 1);
-      audio.play('menuSelect');
+      const idx = unlockedLevels.indexOf(mapSelectedLevel);
+      if (idx > 0) { mapSelectedLevel = unlockedLevels[idx - 1]; audio.play('menuSelect'); }
     } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-      mapSelectedLevel = Math.min(unlockedLevels, mapSelectedLevel + 1);
-      audio.play('menuSelect');
+      const idx = unlockedLevels.indexOf(mapSelectedLevel);
+      if (idx < unlockedLevels.length - 1) { mapSelectedLevel = unlockedLevels[idx + 1]; audio.play('menuSelect'); }
     } else if (e.key === 'Enter') {
       audio.play('menuSelect');
       // Start selected level
@@ -181,7 +181,8 @@ function handleKey(e) {
           game.activeFlash = 0.3;
           audio.play('powerup');
         }
-        game.state = 'playing';
+        // After buying upgrade, return to level select
+        game.state = 'progressionMap';
       }
     );
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.key)) {
@@ -378,6 +379,14 @@ function renderControlsOverlay(ctx, canvasW, canvasH) {
 function init() {
   initCanvas('game', 8);
   setViewportScale(3);
+
+  // Phase 4: level unlock callback (called by game.js nextLevel)
+  window.__onLevelComplete = function(level) {
+    if (!unlockedLevels.includes(level) && level <= 15) {
+      unlockedLevels.push(level);
+      unlockedLevels.sort((a, b) => a - b);
+    }
+  };
 
   // Phase 4 audio + leaderboard
   audio = new AudioManager();
