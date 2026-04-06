@@ -137,7 +137,7 @@ function handleKey(e) {
   }
 
   // ── Game Over — name entry ─────────────────────────────────────────────
-  if (game && game.state === 'gameover' && game.enteringName) {
+  if (game && game.state === 'gameover' && enteringName) {
     const alpha = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const cur   = nameEntry.chars[nameEntry.position];
     const idx   = alpha.indexOf(cur);
@@ -159,8 +159,8 @@ function handleKey(e) {
       if (isTop) {
         leaderboard.addEntry({ name: nameEntry.getName(), score: game.score, level: game.level });
       }
-      game.enteringName = false;
-      game.showLeaderboard = true;
+      enteringName = false;
+      showLeaderboard = true;
       audio.play('menuSelect');
     }
     e.preventDefault();
@@ -179,8 +179,8 @@ function handleKey(e) {
 
   // ── Game Over — waiting to start name entry ────────────────────────────
   if (game && game.state === 'gameover') {
-    if (!game.enteringName && !game.showLeaderboard && (e.key === 'Enter' || e.key === ' ')) {
-      game.enteringName = true;
+    if (!enteringName && !showLeaderboard && (e.key === 'Enter' || e.key === ' ')) {
+      enteringName = true;
       nameEntry = new NameEntry();
       audio.play('menuSelect');
     }
@@ -353,11 +353,11 @@ function gameLoop(ts) {
   } else if (game.state === 'gameover') {
     clearFrame();
     gameOverAnimFrame++;
-    if (game.enteringName && nameEntry) {
+    if (enteringName && nameEntry) {
       // Render game scene behind, then name entry on top
       renderMaze(game.maze);
       renderHUD(game.score, game.lives, game.level, game.highScore);
-      renderNameEntry(ctx, nameEntry, game.score, canvasW, canvasH);
+      renderNameEntry(ctx, nameEntry, canvasW, canvasH);
     } else if (game.showLeaderboard) {
       renderMaze(game.maze);
       renderHUD(game.score, game.lives, game.level, game.highScore);

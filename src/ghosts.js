@@ -176,12 +176,12 @@ export class Pinky extends Ghost {
     super('pinky', 13, 14);
   }
   _chaseTarget(pacmanTile, blinkyTile) {
-    // 4 tiles ahead of pacman
-    const ahead = { dx: 4, dy: 0 };  // Default right; actual dir set per-frame
+    // 4 tiles ahead of pacman (based on actual facing direction)
     const dirs = { up:[0,-4], down:[0,4], left:[-4,0], right:[4,0] };
+    const ahead = dirs[this.direction] || [0, 0];
     return {
-      x: pacmanTile.x + ahead.dx,
-      y: pacmanTile.y + ahead.dy
+      x: pacmanTile.x + ahead[0],
+      y: pacmanTile.y + ahead[1]
     };
   }
   _scatterTarget() {
