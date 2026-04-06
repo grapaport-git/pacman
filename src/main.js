@@ -34,6 +34,8 @@ let pausedSelectedIndex = 0;      // 0=RESUME, 1=RESTART, 2=QUIT
 let mapSelectedLevel  = 1;        // currently selected level on progression map
 let unlockedLevels   = [1];      // array of unlocked level numbers (1-indexed)
 let gameOverAnimFrame = 0;        // frame counter for game over screen animations
+window.resetGameOverAnimFrame = () => { gameOverAnimFrame = 0; };
+window.resetEnteringName = () => { enteringName = false; showLeaderboard = false; };
 const MAX_NAME_LEN = 3;
 
 // ── Input ─────────────────────────────────────────────────────────────────────
@@ -179,10 +181,16 @@ function handleKey(e) {
 
   // ── Game Over — waiting to start name entry ────────────────────────────
   if (game && game.state === 'gameover') {
-    if (!enteringName && !showLeaderboard && (e.key === 'Enter' || e.key === ' ')) {
-      enteringName = true;
-      nameEntry = new NameEntry();
-      audio.play('menuSelect');
+    if (!enteringName && !showLeaderboard) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        // Press Enter/Space to restart immediately
+        game.restartGame();
+        if (window.resetGameOverAnimFrame) window.resetGameOverAnimFrame();
+        audio.play('gameStart');
+        audio.stopMusic();
+      }
+      e.preventDefault();
+      return;
     }
     e.preventDefault();
     return;

@@ -175,8 +175,11 @@ export class GameState {
     this.score = 0;
     this.lives = 3;
     this.level = 1;
+    this.dyingTimer = 0;
     this._initLevel();
     this.state = 'playing';
+    if (window.resetGameOverAnimFrame) window.resetGameOverAnimFrame();
+    if (window.resetEnteringName) { window.resetEnteringName(); window.resetShowLeaderboard(); }
   }
 
   update(dt) {
