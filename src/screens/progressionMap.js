@@ -6,7 +6,6 @@ import { getCtx, getTileSize } from '../renderer.js';
 const TOTAL_LEVELS = 15;
 const NODE_RADIUS  = 14;
 const NODE_SPACING = 52;
-const PATH_PADDING = 40;
 const HEADER_H     = 40;
 
 function drawHeader(ctx, canvasW, currentLevel, tileSz) {
