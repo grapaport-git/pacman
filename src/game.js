@@ -4,6 +4,7 @@ import { MAZE_DATA, getTile, isWall, isTunnel, countDots, countPowerPellets } fr
 import { PacMan, DIRECTION } from './pacman.js';
 import { Ghost, Blinky, Pinky, Inky, Clyde, GHOST_MODE } from './ghosts.js';
 import { LEVEL_CONFIG, LEVELS, generateLevel } from './levels/index.js';
+import { PowerUpManager } from './powerups/powerup.js';
 
 export class GameState {
   constructor() {
@@ -20,9 +21,18 @@ export class GameState {
     this.levelCompleteTimer = 0;
     this.levelCompleteMax = 2.0;
     this.dotsRemaining = 0;
+    this.magnetActive = false;
+    this.magnetRadius = 0;
+    this.scoreMultiplier = 1;
+    this.invincible = false;
     this.maze = [];
     this.pacman = null;
     this.ghosts = [];
+    // Phase 3: power-up integration
+    this.powerUpManager = null;  // set by caller after construction
+    this.powerUpStore   = { coins: 0, purchasedUpgrades: [] };
+    this.particleSystem = [];
+    this.activeFlash    = 0;
     this._initLevel();
   }
 
@@ -79,7 +89,7 @@ export class GameState {
     const cfg = this._currentConfig();
     if (tile === 2) {
       this.maze[y][x] = 0;
-      this.score += cfg.dotBonus;
+    this.score += cfg.dotBonus * (this.scoreMultiplier || 1);
       this.dotsRemaining--;
       return true;
     }
@@ -109,6 +119,7 @@ export class GameState {
     } else {
       this.pacman.respawn();
       this.ghosts.forEach(g => g.respawn());
+      this.powerUpManager = new PowerUpManager(this);
       this.state = 'playing';
     }
   }
@@ -119,6 +130,7 @@ export class GameState {
 
   checkGhostCollision() {
     if (this.state !== 'playing') return;
+    if (this.invincible) return;
     const px = this.pacman.tileX;
     const py = this.pacman.tileY;
 
@@ -191,6 +203,33 @@ export class GameState {
     // Eat dot at current tile
     this.eatDot(this.pacman.tileX, this.pacman.tileY);
 
+    // Magnet power-up: pull nearby dots toward Pac-Man
+    if (this.magnetActive && this.magnetRadius) {
+      const PR = this.magnetRadius;
+      const px = this.pacman.tileX;
+      const py = this.pacman.tileY;
+      for (let y = 0; y < this.maze.length; y++) {
+        for (let x = 0; x < this.maze[y].length; x++) {
+          if (this.maze[y][x] !== 2) continue;
+          const dist = Math.sqrt((x - px) ** 2 + (y - py) ** 2);
+          if (dist < PR && dist > 0.5) {
+            // Move dot one step toward pacman
+            const nx = x + Math.sign(px - x);
+            const ny = y + Math.sign(py - y);
+            if (!isWall(nx, ny) && this.maze[ny][nx] === 0) {
+              this.maze[y][x] = 0;
+              this.maze[ny][nx] = 2;
+            }
+          }
+        }
+      }
+    }
+
+    // Power-up manager tick
+    if (this.powerUpManager) {
+      this.powerUpManager.update(dt);
+    }
+
     // Update ghosts
     const blinky = this.ghosts[0];
     this.ghosts.forEach(g => {
@@ -204,10 +243,10 @@ export class GameState {
     // Collision check
     this.checkGhostCollision();
 
-    // Level complete
+    // Level complete → upgrade screen
     if (this.isLevelComplete()) {
-      this.state = 'levelcomplete';
-      this.levelCompleteTimer = this.levelCompleteMax;
+      this.state = 'upgrade';
+      this.levelCompleteTimer = 0;
     }
   }
 }

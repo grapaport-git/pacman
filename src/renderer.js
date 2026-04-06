@@ -204,3 +204,100 @@ export function renderGameOver(score) {
 
 export function getCtx() { return ctx; }
 export function getTileSize() { return tileSize; }
+
+// ─── Phase 3: Power-up HUD, Particles & Visual Effects ─────────────────────
+
+const _particles = [];  // { x, y, vx, vy, color, life, maxLife, size }
+
+const POWERUP_COLORS_HUD = {
+  speed:        '#00ff88',
+  triple:       '#ff44ff',
+  ghostfreeze:  '#44aaff',
+  scoreboost:   '#ffdd00',
+  magnet:       '#ffaa00',
+  shield:       '#ff4444',
+  ghostbomb:    '#ff8800',
+  slowmo:       '#88ccff',
+};
+
+export function spawnParticles(x, y, color, count = 8) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count + Math.random() * 0.4;
+    const speed = 30 + Math.random() * 40;
+    _particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      color,
+      life: 0.6,
+      maxLife: 0.6,
+      size: tileSize * 0.35,
+    });
+  }
+}
+
+export function renderParticles(ctx) {
+  for (let i = _particles.length - 1; i >= 0; i--) {
+    const p = _particles[i];
+    p.x += p.vx * (1 / 60);
+    p.y += p.vy * (1 / 60);
+    p.life -= 1 / 60;
+    if (p.life <= 0) { _particles.splice(i, 1); continue; }
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+export function flashScreen(ctx, canvasW, canvasH, timer) {
+  if (timer <= 0) return;
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+}
+
+export function renderMagnetGlow(ctx, pacmanX, pacmanY, tileSz, radius = 4) {
+  const cx = pacmanX * tileSz + tileSz / 2;
+  const cy = pacmanY * tileSz + tileSz / 2;
+  const px = cx + tileSz * radius;
+  const gradient = ctx.createRadialGradient(cx, cy, 2, cx, cy, px);
+  gradient.addColorStop(0,   'rgba(255,170,0,0.35)');
+  gradient.addColorStop(0.5, 'rgba(255,170,0,0.12)');
+  gradient.addColorStop(1,   'rgba(255,170,0,0)');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(cx, cy, px, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+export function renderActivePowerUps(ctx, powerupManager, tileSz) {
+  if (!powerupManager || !powerupManager.activePowerUps) return;
+  const active = Object.entries(powerupManager.activePowerUps);
+  if (active.length === 0) return;
+
+  const iconSize = 12;
+  const barW = 36;
+  const barH = 4;
+  const hudY = 31 * tileSz + 4;
+  let slotX = 4;
+
+  for (const [type, data] of active) {
+    const color = POWERUP_COLORS_HUD[type] || '#ffffff';
+    // Icon circle
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(slotX + iconSize / 2, hudY + iconSize / 2, iconSize / 2, 0, Math.PI * 2);
+    ctx.fill();
+    // Timer bar
+    const max = data.maxDuration || 1;
+    const frac = Math.max(0, data.timer / max);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(slotX, hudY + iconSize + 1, barW, barH);
+    ctx.fillStyle = color;
+    ctx.fillRect(slotX, hudY + iconSize + 1, barW * frac, barH);
+    slotX += iconSize + barW + 6;
+  }
+}
