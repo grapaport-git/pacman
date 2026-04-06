@@ -261,7 +261,8 @@ function gameLoop(ts) {
   applyShake(ctx);
 
   // ── UPDATE ────────────────────────────────────────────────────────────
-  if (game.state === 'playing' || game.state === 'dying') {
+  // NOTE: 'dying' state is a visual freeze only — no physics updates.
+  if (game.state === 'playing') {
     game.update(dt);
     if (game.powerUpManager) {
       game.powerUpManager.update(dt * 1000);
