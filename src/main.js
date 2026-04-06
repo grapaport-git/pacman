@@ -1,11 +1,11 @@
-// Entry point for Pac-Man game — Phase 2 + Phase 3 + Phase 4 upgrades
+// Entry point for Pac-Man game — Phase 2 + 3 + 4 upgrades
 
 import { initCanvas, clearFrame, renderMaze, renderPacMan, renderGhost,
          renderHUD, renderOverlay, renderGameOver, renderScorePopups,
          setViewportScale, getCtx, getTileSize, addScorePopup,
          spawnParticles, renderParticles, flashScreen,
          renderMagnetGlow, renderActivePowerUps,
-         screenShake, applyShake, screenWipe, flashModeShift } from './renderer.js';
+         renderMenu } from './renderer.js';
 import { GameState } from './game.js';
 import { DIRECTION } from './pacman.js';
 import { renderUpgradeScreen, handleUpgradeKey } from './ui/upgradeScreen.js';
@@ -14,25 +14,20 @@ import { PowerUpStore, UPGRADE_TREE } from './powerups/upgrades.js';
 import { COIN_TABLE } from './powerups/index.js';
 import { AudioManager } from './audio.js';
 import { Leaderboard, NameEntry, renderLeaderboard, renderNameEntry } from './systems/leaderboard.js';
-import { renderMainMenu, tickMenuAnim } from './screens/menu.js';
-import { renderPauseMenu } from './screens/pause.js';
-import { renderProgressionMap } from './screens/progressionMap.js';
-import { renderGameOverScreen } from './screens/gameOver.js';
 
 let game;
 let lastTime = 0;
-let animFrame = 0;
 let upgradeSelectedIndex = 0;
 let store;
+
+// Phase 4 — Audio & Leaderboard
 let audio;
 let leaderboard;
 let nameEntry;
+let menuSelectedIndex = 0;  // 0=start game, 1=leaderboard
+let enteringName = false;
 
-// Menu state
-let menuSelectedIndex = 0; // 0=START GAME, 1=HIGH SCORES, 2=CONTROLS
-let pausedSelectedIndex = 0; // 0=RESUME, 1=RESTART, 2=QUIT
-let mapSelectedLevel = 1; // selected level on progression map
-let unlockedLevels = 1; // highest unlocked level
+const MENU_ITEMS = ['START GAME', 'HIGH SCORES'];
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
@@ -43,123 +38,111 @@ function handleKey(e) {
     w: DIRECTION.UP, s: DIRECTION.DOWN, a: DIRECTION.LEFT, d: DIRECTION.RIGHT
   };
 
-  // Menu navigation
+  // ── Menu state ──
   if (game && game.state === 'menu') {
-    if (e.key === 'ArrowUp') {
-      menuSelectedIndex = (menuSelectedIndex - 1 + 3) % 3;
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'w' || e.key === 's') {
       audio.play('menuSelect');
-    } else if (e.key === 'ArrowDown') {
-      menuSelectedIndex = (menuSelectedIndex + 1) % 3;
-      audio.play('menuSelect');
-    } else if (e.key === 'Enter') {
+      menuSelectedIndex = (menuSelectedIndex + (e.key === 'ArrowDown' || e.key === 's' ? 1 : -1) + MENU_ITEMS.length) % MENU_ITEMS.length;
+      e.preventDefault();
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
       audio.play('menuSelect');
       if (menuSelectedIndex === 0) {
-        // START GAME → progression map
-        game.state = 'map';
-      } else if (menuSelectedIndex === 1) {
+        game.state = 'playing';
+        audio.stopMusic();
+        audio.play('gameStart');
+        audio.playMusic('gameplay');
+      } else {
         game.state = 'leaderboard';
-      } else if (menuSelectedIndex === 2) {
-        // CONTROLS — just show controls overlay briefly
-        game.state = 'controls';
       }
+      e.preventDefault();
+      return;
     }
-    e.preventDefault();
     return;
   }
 
-  // Controls overlay
-  if (game && game.state === 'controls') {
-    if (e.key === 'Enter' || e.key === 'Escape') {
-      game.state = 'menu';
-    }
-    e.preventDefault();
-    return;
-  }
-
-  // Leaderboard screen
+  // ── Leaderboard state ──
   if (game && game.state === 'leaderboard') {
-    if (e.key === 'Enter' || e.key === 'Escape') {
+    if (e.key === 'Enter' || e.key === 'Escape' || e.key === ' ') {
       game.state = 'menu';
-    }
-    e.preventDefault();
-    return;
-  }
-
-  // Progression map
-  if (game && game.state === 'map') {
-    if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
-      const idx = unlockedLevels.indexOf(mapSelectedLevel);
-      if (idx > 0) { mapSelectedLevel = unlockedLevels[idx - 1]; audio.play('menuSelect'); }
-    } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
-      const idx = unlockedLevels.indexOf(mapSelectedLevel);
-      if (idx < unlockedLevels.length - 1) { mapSelectedLevel = unlockedLevels[idx + 1]; audio.play('menuSelect'); }
-    } else if (e.key === 'Enter') {
       audio.play('menuSelect');
-      // Start selected level
-      const chosenLevel = mapSelectedLevel;
-      game.restartGame();
-      game.level = chosenLevel;
-      game._initLevel();
-      game.state = 'start';
-      audio.play('gameStart');
-      audio.stopMusic();
-    } else if (e.key === 'Escape') {
-      game.state = 'menu';
+      e.preventDefault();
+      return;
     }
-    e.preventDefault();
     return;
   }
 
-  // Pause menu
+  // ── Paused state ──
   if (game && game.state === 'paused') {
-    if (e.key === 'ArrowUp') {
-      pausedSelectedIndex = (pausedSelectedIndex - 1 + 3) % 3;
+    if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+      game.state = 'playing';
       audio.play('menuSelect');
-    } else if (e.key === 'ArrowDown') {
-      pausedSelectedIndex = (pausedSelectedIndex + 1) % 3;
-      audio.play('menuSelect');
-    } else if (e.key === 'Enter') {
-      audio.play('menuSelect');
-      if (pausedSelectedIndex === 0) {
-        game.state = 'playing';
-      } else if (pausedSelectedIndex === 1) {
-        game.restartGame();
-        game.state = 'playing';
-      } else if (pausedSelectedIndex === 2) {
-        game.state = 'menu';
-        menuSelectedIndex = 0;
-      }
+      e.preventDefault();
+      return;
     }
-    e.preventDefault();
-    return;
-  }
-
-  // Game Over — name entry
-  if (game && game.state === 'gameover' && game.enteringName) {
-    if (e.key === 'Enter') {
-      const name = nameEntry.getName();
-      leaderboard.addEntry({ name, score: game.score, level: game.level });
-      game.enteringName = false;
-      game.showLeaderboard = true;
-      audio.play('menuSelect');
-    } else {
-      nameEntry.handleKey(e.key);
-    }
-    e.preventDefault();
-    return;
-  }
-
-  // Game Over — showing leaderboard
-  if (game && game.state === 'gameover' && game.showLeaderboard) {
-    if (e.key === 'Enter') {
+    if (e.key === 'q' || e.key === 'Q') {
       game.state = 'menu';
-      menuSelectedIndex = 0;
+      audio.stopMusic();
+      audio.playMusic('menu');
+      e.preventDefault();
+      return;
     }
-    e.preventDefault();
     return;
   }
 
-  // Upgrade screen navigation
+  // ── Game over + name entry ──
+  if (game && game.state === 'gameover' && enteringName) {
+    if (e.key === 'ArrowLeft') {
+      nameEntry.moveCursor(-1);
+      audio.play('menuSelect');
+      e.preventDefault();
+    } else if (e.key === 'ArrowRight') {
+      nameEntry.moveCursor(1);
+      audio.play('menuSelect');
+      e.preventDefault();
+    } else if (e.key === 'ArrowUp' || e.key === 'w') {
+      nameEntry.cycleChar(1);
+      audio.play('menuSelect');
+      e.preventDefault();
+    } else if (e.key === 'ArrowDown' || e.key === 's') {
+      nameEntry.cycleChar(-1);
+      audio.play('menuSelect');
+      e.preventDefault();
+    } else if (e.key === 'Enter') {
+      nameEntry.confirm();
+      const isTop = leaderboard.isHighScore(game.score);
+      if (isTop) {
+        leaderboard.addEntry({
+          name: nameEntry.getName(),
+          score: game.score,
+          level: game.level,
+          date: new Date().toLocaleDateString()
+        });
+      }
+      enteringName = false;
+      nameEntry = null;
+      game.state = 'leaderboard';
+      audio.play('menuSelect');
+      e.preventDefault();
+    }
+    return;
+  }
+
+  // ── Game over (waiting for Enter to restart or name entry) ──
+  if (game && game.state === 'gameover') {
+    if (e.key === 'Enter' || e.key === ' ') {
+      if (!enteringName) {
+        enteringName = true;
+        nameEntry = new NameEntry();
+        audio.play('menuSelect');
+      }
+      e.preventDefault();
+    }
+    return;
+  }
+
+  // ── Upgrade screen navigation ──
   if (game && game.state === 'upgrade') {
     const types = Object.keys(UPGRADE_TREE_BY_TYPE);
     upgradeSelectedIndex = handleUpgradeKey(e.key, upgradeSelectedIndex, types,
@@ -181,10 +164,8 @@ function handleKey(e) {
             '#ffdd00', 12
           );
           game.activeFlash = 0.3;
-          audio.play('powerup');
         }
-        // After buying upgrade, return to level select
-        game.state = 'map';
+        game.state = 'playing';
       }
     );
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.key)) {
@@ -193,37 +174,38 @@ function handleKey(e) {
     return;
   }
 
+  // ── Playing state ──
   const dir = keyMap[e.key];
   if (dir && game && game.state === 'playing') {
     game.pacman.setDirection(dir);
     e.preventDefault();
   }
 
-  // Pause toggle
-  if ((e.key === 'Escape' || e.key === 'p' || e.key === 'P') && game) {
-    if (game.state === 'playing') {
+  if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') {
+    if (game && game.state === 'playing') {
       game.state = 'paused';
-      pausedSelectedIndex = 0;
-    } else if (game.state === 'paused') {
-      game.state = 'playing';
+      audio.play('menuSelect');
+      e.preventDefault();
     }
-    e.preventDefault();
+    return;
   }
 
-  // Start/restart
   if (e.key === ' ' || e.key === 'Enter') {
     if (!game) return;
     if (game.state === 'start') {
       game.state = 'playing';
       audio.play('gameStart');
-      audio.stopMusic();
-    } else if (game.state === 'gameover' && !game.enteringName && !game.showLeaderboard) {
-      game.restartGame();
-      game.state = 'playing';
+      audio.playMusic('gameplay');
     }
-    e.preventDefault();
   }
 }
+
+// ─── Tab blur → auto-pause ─────────────────────────────────────────────────────
+window.addEventListener('blur', () => {
+  if (game && game.state === 'playing') {
+    game.state = 'paused';
+  }
+});
 
 // ─── Game loop ───────────────────────────────────────────────────────────────
 
@@ -234,38 +216,28 @@ function gameLoop(ts) {
   if (!game) { requestAnimationFrame(gameLoop); return; }
 
   const ctx = getCtx();
-  const t = getTileSize();
-  const canvasW = 28 * t;
-  const canvasH = 31 * t + 16;
-
-  ctx.save();
-  applyShake(ctx);
+  const ts2 = getTileSize();
+  const canvasW = 28 * ts2;
+  const canvasH = 31 * ts2 + 16;
 
   // ── UPDATE ──
-  if (game.state === 'playing' || game.state === 'dying') {
-    game.update(dt);
-    if (game.powerUpManager) {
-      game.powerUpManager.update(dt * 1000);
-    }
+  game.update(dt);
+
+  // Tick power-up manager (ms)
+  if (game.powerUpManager) {
+    game.powerUpManager.update(dt * 1000);
   }
 
   // ── RENDER by state ──
   if (game.state === 'menu') {
     clearFrame();
-    tickMenuAnim(dt);
-    renderMainMenu(ctx, canvasW, canvasH, menuSelectedIndex);
-
-  } else if (game.state === 'controls') {
-    clearFrame();
-    renderControlsOverlay(ctx, canvasW, canvasH);
+    renderMenu(ctx, canvasW, canvasH, menuSelectedIndex, MENU_ITEMS);
+    return; // skip further render
 
   } else if (game.state === 'leaderboard') {
     clearFrame();
-    renderLeaderboard(ctx, leaderboard, canvasW, canvasH);
-
-  } else if (game.state === 'map') {
-    clearFrame();
-    renderProgressionMap(ctx, canvasW, canvasH, game.level, unlockedLevels, mapSelectedLevel);
+    renderLeaderboard(ctx, leaderboard, canvasW, canvasH, -1);
+    return;
 
   } else if (game.state === 'paused') {
     clearFrame();
@@ -273,52 +245,8 @@ function gameLoop(ts) {
     renderPacMan(game.pacman);
     game.ghosts.forEach(g => renderGhost(g));
     renderHUD(game.score, game.lives, game.level, game.highScore);
-    renderPauseMenu(ctx, canvasW, canvasH, pausedSelectedIndex);
-
-  } else if (game.state === 'start') {
-    clearFrame();
-    renderMaze(game.maze);
-    renderPacMan(game.pacman);
-    game.ghosts.forEach(g => renderGhost(g));
-    renderHUD(game.score, game.lives, game.level, game.highScore);
-    renderOverlay('PAC-MAN', 'PRESS ENTER TO START');
-
-  } else if (game.state === 'playing') {
-    game.activeFlash = Math.max(0, game.activeFlash - dt);
-
-    clearFrame();
-    renderMaze(game.maze);
-
-    // Flash maze walls during mode-shift (power-pellet)
-    if (game.modeShiftFrames > 0) {
-      flashModeShift(ctx, game.maze, game.modeShiftFrames);
-    }
-
-    if (game.magnetActive) {
-      renderMagnetGlow(ctx, game.pacman.tileX, game.pacman.tileY, t, game.magnetRadius || 4);
-    }
-
-    renderPacMan(game.pacman);
-    game.ghosts.forEach(g => renderGhost(g));
-    renderHUD(game.score, game.lives, game.level, game.highScore);
-    renderActivePowerUps(ctx, game.powerUpManager, t);
-    renderParticles(ctx);
-    if (game.activeFlash > 0) {
-      flashScreen(ctx, canvasW, canvasH, game.activeFlash);
-    }
-    renderScorePopups(dt);
-
-  } else if (game.state === 'dying') {
-    clearFrame();
-    renderMaze(game.maze);
-    renderHUD(game.score, game.lives, game.level, game.highScore);
-
-  } else if (game.state === 'levelcomplete') {
-    clearFrame();
-    renderMaze(game.maze);
-    renderOverlay('LEVEL COMPLETE!', `SCORE: ${game.score}`);
-    const wp = Math.min(1, 1 - game.levelCompleteTimer / (game.levelCompleteMax || 2));
-    screenWipe(ctx, canvasW, canvasH, wp, 'left');
+    renderOverlay('PAUSED', 'ESC: RESUME   Q: QUIT');
+    return;
 
   } else if (game.state === 'upgrade') {
     clearFrame();
@@ -329,51 +257,55 @@ function gameLoop(ts) {
       store.purchasedUpgrades,
       UPGRADE_TREE_BY_TYPE,
       upgradeSelectedIndex);
+    return;
+
+  } else if (game.state === 'playing') {
+    game.activeFlash = Math.max(0, game.activeFlash - dt);
+
+    clearFrame();
+    renderMaze(game.maze);
+
+    if (game.magnetActive) {
+      renderMagnetGlow(ctx, game.pacman.tileX, game.pacman.tileY, ts2,
+        game.magnetRadius || 4);
+    }
+
+    renderPacMan(game.pacman);
+    game.ghosts.forEach(g => renderGhost(g));
+    renderHUD(game.score, game.lives, game.level, game.highScore);
+    renderActivePowerUps(ctx, game.powerUpManager, ts2);
+    renderParticles(ctx);
+    if (game.activeFlash > 0) {
+      flashScreen(ctx, canvasW, canvasH, game.activeFlash);
+    }
+    renderScorePopups(dt);
+
+    if (game.state === 'start') {
+      renderOverlay('PAC-MAN', 'PRESS ENTER TO START');
+    }
 
   } else if (game.state === 'gameover') {
     clearFrame();
-    if (game.enteringName) {
-      renderNameEntry(ctx, nameEntry, game.score, canvasW, canvasH);
-    } else if (game.showLeaderboard) {
-      renderMaze(game.maze);
-      renderHUD(game.score, game.lives, game.level, game.highScore);
-      renderLeaderboard(ctx, leaderboard, canvasW, canvasH);
-    } else {
-      renderMaze(game.maze);
-      renderHUD(game.score, game.lives, game.level, game.highScore);
-      renderGameOver(game.score, leaderboard.isHighScore(game.score));
+    renderMaze(game.maze);
+    renderHUD(game.score, game.lives, game.level, game.highScore);
+    renderGameOver(game.score);
+
+    // Name entry overlay
+    if (enteringName && nameEntry) {
+      renderNameEntry(ctx, nameEntry, canvasW, canvasH);
     }
+
+  } else if (game.state === 'dying') {
+    clearFrame();
+    renderMaze(game.maze);
+    renderHUD(game.score, game.lives, game.level, game.highScore);
+  } else if (game.state === 'levelcomplete') {
+    clearFrame();
+    renderMaze(game.maze);
+    renderOverlay('LEVEL COMPLETE!', `SCORE: ${game.score}`);
   }
 
   requestAnimationFrame(gameLoop);
-
-  ctx.restore();
-}
-
-function renderControlsOverlay(ctx, canvasW, canvasH) {
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, canvasW, canvasH);
-  ctx.fillStyle = '#fff';
-  ctx.font = `${Math.floor(canvasH * 0.04)}px monospace`;
-  ctx.textAlign = 'center';
-  ctx.fillText('CONTROLS', canvasW / 2, canvasH * 0.15);
-
-  const lines = [
-    'ARROWS / WASD — Move',
-    'ESC / P — Pause',
-    'ENTER — Start / Confirm',
-    '',
-    'Eat dots and power pellets',
-    'Avoid ghosts!',
-  ];
-  ctx.font = `${Math.floor(canvasH * 0.03)}px monospace`;
-  lines.forEach((line, i) => {
-    ctx.fillText(line, canvasW / 2, canvasH * (0.28 + i * 0.07));
-  });
-
-  ctx.fillStyle = '#888';
-  ctx.font = `${Math.floor(canvasH * 0.025)}px monospace`;
-  ctx.fillText('Press ENTER or ESC to return', canvasW / 2, canvasH * 0.82);
 }
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
@@ -382,22 +314,20 @@ function init() {
   initCanvas('game', 8);
   setViewportScale(3);
 
-  // Phase 4: level unlock callback (called by game.js nextLevel)
-  window.__onLevelComplete = function(level) {
-    if (!unlockedLevels.includes(level) && level <= 15) {
-      unlockedLevels.push(level);
-      unlockedLevels.sort((a, b) => a - b);
-    }
-  };
-
-  // Phase 4 audio + leaderboard
+  // Phase 4 — Audio Manager
   audio = new AudioManager();
+  window.audio = audio;
   audio.init();
+  audio.playMusic('menu');
+
+  // Phase 4 — Leaderboard
   leaderboard = new Leaderboard();
   leaderboard.load();
-  nameEntry = new NameEntry();
+  window.leaderboard = leaderboard;
 
   game = new GameState();
+  game.state = 'menu'; // start at menu
+  menuSelectedIndex = 0;
 
   // Wire Phase 3 power-up system
   store = new PowerUpStore();
@@ -405,27 +335,22 @@ function init() {
   game.powerUpStore = store;
   store.earnCoins(COIN_TABLE(game.level));
 
-  // Start at menu
-  game.state = 'menu';
-  menuSelectedIndex = 0;
-  audio.playMusic('menu');
+  // Listen for first interaction to unlock audio
+  const unlockAudio = () => {
+    audio.init();
+    document.removeEventListener('click', unlockAudio);
+    document.removeEventListener('keydown', unlockAudio);
+  };
+  document.addEventListener('click', unlockAudio);
+  document.addEventListener('keydown', unlockAudio);
 
   window.addEventListener('keydown', handleKey);
-
-  // Tab blur → auto-pause
-  window.addEventListener('blur', () => {
-    if (game && game.state === 'playing') {
-      game.state = 'paused';
-      pausedSelectedIndex = 0;
-    }
-  });
-
   requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(gameLoop); });
 }
 
 window.addEventListener('DOMContentLoaded', init);
 
-// ─── Upgrade tree by type ──────────────────────────────────────────────────────
+// ─── Upgrade tree organised by power-up type ──────────────────────────────────
 const _types = {};
 for (const u of UPGRADE_TREE) {
   if (!_types[u.powerUpType]) {
@@ -441,3 +366,15 @@ const UPGRADE_TREE_BY_TYPE = {};
 for (const [id, data] of Object.entries(_types)) {
   UPGRADE_TREE_BY_TYPE[id] = data;
 }
+
+// ─── Game event audio hooks (called from game.js / main.js) ────────────────────
+
+/**
+ * Call these from game.js methods to trigger audio:
+ *   window.audio.play('munch');
+ *   window.audio.play('powerup');
+ *   window.audio.playGhostEat(ghostEatCount);
+ *   window.audio.play('death');
+ *   window.audio.play('levelComplete');
+ *   window.audio.play('gameStart');
+ */

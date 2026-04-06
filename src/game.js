@@ -117,15 +117,11 @@ export class GameState {
     this.lives--;
     this.state = 'dying';
     this.dyingTimer = this.dyingMax;
-    this.enteringName = false;
-    this.showLeaderboard = false;
   }
 
   respawn() {
     if (this.lives <= 0) {
       this.state = 'gameover';
-      this.enteringName = true;
-      this.showLeaderboard = false;
       if (this.score > this.highScore) {
         this.highScore = this.score;
         localStorage.setItem('pacman_highscore', String(this.score));
@@ -270,6 +266,7 @@ export class GameState {
     if (this.isLevelComplete()) {
       this.state = 'upgrade';
       this.levelCompleteTimer = 0;
+      if (window.audio) window.audio.play('levelComplete');
     }
   }
 }
