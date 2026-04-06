@@ -55,6 +55,7 @@ export class Ghost {
     this.direction = 'up';
     this.mode = GHOST_MODE.SCATTER;
     this.speed = 6;  // tiles per second
+    this.moveTimer = 0;  // tile movement accumulator
     this.path = [];
     this.deadPath = null;
     this._scatterTarget = () => ({ x: 25, y: 0 });  // Override per ghost
@@ -75,75 +76,97 @@ export class Ghost {
     return pacmanTile;  // Base class uses pacman position
   }
 
-  _getNextDir(dirs) {
-    const dirOrder = ['up', 'down', 'left', 'right'];
-    return dirs.find(d => d !== oppositeDir(this.direction)) || dirs[0];
-  }
-
-  _movePixel(dt) {
-    const dirVec = { up: [0,-1], down: [0,1], left: [-1,0], right: [1,0] };
-    const [dx, dy] = dirVec[this.direction];
-    const speedPPS = this.speed * 8;
-    this.pixelX += dx * speedPPS * dt;
-    this.pixelY += dy * speedPPS * dt;
-  }
-
-  _reachedTile() {
-    return this.pixelX % 8 === 0 && this.pixelY % 8 === 0;
-  }
-
+  // ── Tile-timer update (matches Pac-Man movement approach) ─────────────
   update(dt, isWallFn, pacmanTile, blinkyTile) {
-    if (this._reachedTile()) {
-      this.tileX = Math.round(this.pixelX / 8);
-      this.tileY = Math.round(this.pixelY / 8);
+    // Accumulate movement: speed is in tiles/sec
+    this.moveTimer += this.speed * dt;
 
-      if (this.mode === GHOST_MODE.DEAD && this.tileX === 13 && this.tileY === 14) {
-        this.mode = GHOST_MODE.CHASE;
-        this.speed = 6;
-      }
+    while (this.moveTimer >= 1) {
+      this.moveTimer -= 1;
 
+      // Recalculate path toward current target
       const target = this.getTargetTile(pacmanTile, blinkyTile);
       this.path = bfsPath(this.tileX, this.tileY, target.x, target.y, isWallFn);
+
+      // Determine next tile from path (or current direction if no path)
+      let nx = this.tileX;
+      let ny = this.tileY;
+
       if (this.path.length > 0) {
-        const next = this.path[0];
-        const dirs = ['up', 'down', 'left', 'right'];
-        for (const d of dirs) {
-          const vec = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
-          const nx = this.tileX + vec[d][0];
-          const ny = this.tileY + vec[d][1];
-          if (nx === next.x && ny === next.y) {
-            this.direction = d;
-            break;
+        nx = this.path[0].x;
+        ny = this.path[0].y;
+        this.path.shift();
+      } else {
+        // No path — try to keep moving in current direction
+        const dirVec = { up: [0,-1], down: [0,1], left: [-1,0], right: [1,0] };
+        const [dx, dy] = dirVec[this.direction];
+        nx = this.tileX + dx;
+        ny = this.tileY + dy;
+      }
+
+      // Move if next tile is a tunnel or not a wall
+      if (nx < 0 || nx >= 28 || !isWallFn(nx, ny)) {
+        this.tileX = nx;
+        this.tileY = ny;
+
+        // Tunnel wrapping
+        if (this.tileX < 0)  this.tileX = 27;
+        if (this.tileX >= 28) this.tileX = 0;
+
+        // Snap to tile centre
+        this.pixelX = this.tileX * 8;
+        this.pixelY = this.tileY * 8;
+
+        // ── DEAD ghost reached ghost house entrance ──
+        if (this.mode === GHOST_MODE.DEAD && this.tileX === 13 && this.tileY === 14) {
+          this.mode = GHOST_MODE.CHASE;
+          this.speed = 6;
+        }
+
+        // Update direction to match movement
+        if (this.path.length > 0) {
+          const ddx = this.path[0].x - this.tileX;
+          const ddy = this.path[0].y - this.tileY;
+          if (ddx === 1) this.direction = 'right';
+          else if (ddx === -1) this.direction = 'left';
+          else if (ddy === 1) this.direction = 'down';
+          else if (ddy === -1) this.direction = 'up';
+        } else {
+          // Set direction from tile delta (for non-path movement)
+          const dirVec = { up: [0,-1], down: [0,1], left: [-1,0], right: [1,0] };
+          for (const [d, [dx, dy]] of Object.entries(dirVec)) {
+            if (this.tileX + dx === nx && this.tileY + dy === ny) {
+              this.direction = d;
+              break;
+            }
           }
         }
       }
     }
-
-    this._movePixel(dt);
-
-    // Tunnel wrapping
-    if (this.pixelX < 0) this.pixelX += 28 * 8;
-    if (this.pixelX >= 28 * 8) this.pixelX -= 28 * 8;
   }
 
   enterFrightened() {
     this.mode = GHOST_MODE.FRIGHTENED;
     this.speed = 4;
+    this.path = [];
   }
 
   enterDead() {
     this.mode = GHOST_MODE.DEAD;
     this.speed = 10;
+    this.path = [];
   }
 
   enterChase() {
     this.mode = GHOST_MODE.CHASE;
     this.speed = 6;
+    this.path = [];
   }
 
   enterScatter() {
     this.mode = GHOST_MODE.SCATTER;
     this.speed = 6;
+    this.path = [];
   }
 
   respawn() {
@@ -154,6 +177,7 @@ export class Ghost {
     this.direction = 'up';
     this.mode = GHOST_MODE.SCATTER;
     this.speed = 6;
+    this.moveTimer = 0;
     this.path = [];
   }
 }

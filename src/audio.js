@@ -9,7 +9,6 @@ const _AUDIO_POLYFILL = `
 
 export class AudioManager {
   constructor() {
-    eval(_AUDIO_POLYFILL);
     this.ctx = null;
     this.musicGain = null;
     this.sfxGain = null;
