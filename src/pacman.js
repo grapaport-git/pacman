@@ -30,6 +30,7 @@ export class PacMan {
     this.mouthInterval = 0.08;  // seconds between frames
     this.moveBufferTime = 0;
     this.moveBufferMax = 0.1;  // 100ms buffer
+    this.moveTimer = 0;         // tile movement accumulator
   }
 
   setDirection(dir) {
@@ -63,49 +64,43 @@ export class PacMan {
       this.mouthFrame = (this.mouthFrame + 1) % 3;
     }
 
-    // Move buffer countdown
+    // Countdown move buffer
     if (this.moveBufferTime > 0) {
       this.moveBufferTime -= dt;
     }
 
-    // Determine next tile based on current direction
-    const vec = DIR_VECTORS[this.direction];
-    const nextTX = this.tileX + vec.dx;
-    const nextTY = this.tileY + vec.dy;
+    // Accumulate movement: speed is in tiles/sec
+    // Each tick: moveTimer += speed * dt (in tile units)
+    this.moveTimer += this.speed * dt;
 
-    // Only enter next tile if it's not a wall (or is tunnel)
-    const canMove = (nextTX < 0 || nextTX >= 28) || !isWallFn(nextTX, nextTY);
+    // Move one tile at a time when timer is ready
+    while (this.moveTimer >= 1) {
+      this.moveTimer -= 1;
 
-    if (canMove) {
-      // Move pixel-wise along current direction
-      const speedPPS = this.speed * 8;
-      this.pixelX += vec.dx * speedPPS * dt;
-      this.pixelY += vec.dy * speedPPS * dt;
+      // Determine target tile from current direction
+      const vec = DIR_VECTORS[this.direction];
+      const nextTX = this.tileX + vec.dx;
+      const nextTY = this.tileY + vec.dy;
 
-      // Tunnel wrapping
-      if (this.pixelX < 0) this.pixelX += 28 * 8;
-      if (this.pixelX >= 28 * 8) this.pixelX -= 28 * 8;
+      // Check if next tile is clear (wall check)
+      if (nextTX < 0 || nextTX >= 28 || !isWallFn(nextTX, nextTY)) {
+        // Advance to next tile
+        this.tileX = nextTX;
+        this.tileY = nextTY;
 
-      // Derive tile from pixel position
-      let tX = Math.floor(this.pixelX / 8);
-      let tY = Math.floor(this.pixelY / 8);
-      // Handle tunnel wrap for tile tracking
-      if (tX < 0) tX += 28;
-      if (tX >= 28) tX -= 28;
+        // Tunnel wrapping
+        if (this.tileX < 0)  this.tileX = 27;
+        if (this.tileX >= 28) this.tileX = 0;
 
-      // If tile changed, snap and try buffered turn
-      if (tX !== this.tileX || tY !== this.tileY) {
-        this.tileX = tX;
-        this.tileY = tY;
-        this.pixelX = tX * 8;
-        this.pixelY = tY * 8;
-        this._tryTurn(isWallFn);
+        // Update pixel position to match tile
+        this.pixelX = this.tileX * 8;
+        this.pixelY = this.tileY * 8;
+      } else {
+        // Hit wall — stop timer from accumulating while blocked
+        this.moveTimer = 0;
       }
-    } else {
-      // At wall — snap pixel position to edge of current tile
-      this.pixelX = this.tileX * 8;
-      this.pixelY = this.tileY * 8;
-      // Still try buffered turn so direction change applies at next opening
+
+      // At each tile arrival, try buffered direction change
       this._tryTurn(isWallFn);
     }
   }
@@ -118,5 +113,6 @@ export class PacMan {
     this.direction = DIRECTION.RIGHT;
     this.nextDirection = null;
     this.mouthFrame = 0;
+    this.moveTimer = 0;
   }
 }

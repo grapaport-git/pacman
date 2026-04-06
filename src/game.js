@@ -181,7 +181,6 @@ export class GameState {
 
   update(dt) {
     if (this.state === 'dying') {
-      // Freeze all movement; only countdown death timer
       this.dyingTimer -= dt;
       if (this.dyingTimer <= 0) this.respawn();
       return;
