@@ -56,6 +56,7 @@ export class Ghost {
     this.mode = GHOST_MODE.SCATTER;
     this.speed = 6;
     this.path = [];
+    this.distTraveled = 0;  // accumulate distance to detect tile crossings
     this.deadPath = null;
     this._scatterTarget = () => ({ x: 25, y: 0 });
   }
@@ -89,8 +90,17 @@ export class Ghost {
   }
 
   update(dt, isWallFn, pacmanTile, blinkyTile) {
-    // Recalculate direction only when on a tile (same as original)
-    if (this._reachedTile()) {
+    // Accumulate distance traveled
+    this.distTraveled += this.speed * dt;
+
+    const onTile = this._reachedTile() || this.distTraveled >= 1;
+
+    if (onTile) {
+      this.distTraveled = 0;
+
+      // Snap pixel position to tile centre before pathfinding
+      this.pixelX = Math.round(this.pixelX / 8) * 8;
+      this.pixelY = Math.round(this.pixelY / 8) * 8;
       this.tileX = Math.round(this.pixelX / 8);
       this.tileY = Math.round(this.pixelY / 8);
 
@@ -154,6 +164,7 @@ export class Ghost {
     this.mode = GHOST_MODE.SCATTER;
     this.speed = 6;
     this.path = [];
+    this.distTraveled = 0;
   }
 }
 
