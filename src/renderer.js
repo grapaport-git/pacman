@@ -109,6 +109,55 @@ export function clearFrame() {
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
+export function renderMenu(ctx, canvasW, canvasH, selectedIndex, items) {
+  clearFrame();
+  // Background
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  // Title
+  ctx.fillStyle = '#ffdd00';
+  ctx.font = `bold ${Math.floor(canvasH * 0.12)}px "Courier New", monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('PAC-MAN', canvasW / 2, canvasH * 0.28);
+
+  // Subtitle
+  ctx.fillStyle = '#4488ff';
+  ctx.font = `${Math.floor(canvasH * 0.035)}px "Courier New", monospace`;
+  ctx.fillText('PHASE 4 EDITION', canvasW / 2, canvasH * 0.36);
+
+  // Menu items
+  items.forEach((item, i) => {
+    const y = canvasH * (0.5 + i * 0.1);
+    const isSelected = i === selectedIndex;
+
+    if (isSelected) {
+      // Selection arrow + background pill
+      ctx.fillStyle = '#2244ff33';
+      ctx.fillRect(canvasW * 0.25, y - canvasH * 0.05,
+                   canvasW * 0.5, canvasH * 0.08);
+      ctx.fillStyle = '#ffdd00';
+      ctx.font = `bold ${Math.floor(canvasH * 0.055)}px "Courier New", monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText(`> ${item}`, canvasW / 2, y + canvasH * 0.025);
+    } else {
+      ctx.fillStyle = '#888';
+      ctx.font = `${Math.floor(canvasH * 0.05)}px "Courier New", monospace`;
+      ctx.textAlign = 'center';
+      ctx.fillText(item, canvasW / 2, y + canvasH * 0.025);
+    }
+  });
+
+  // Blinking hint
+  const blink = Math.sin(Date.now() / 400) > 0;
+  if (blink) {
+    ctx.fillStyle = '#666';
+    ctx.font = `${Math.floor(canvasH * 0.03)}px "Courier New", monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText('ARROW KEYS TO SELECT  •  ENTER TO CONFIRM', canvasW / 2, canvasH * 0.82);
+  }
+}
+
 export function setViewportScale(scale) {
   viewportScale = scale;
   if (canvas) {
