@@ -24,7 +24,7 @@ export class PacMan {
     this.pixelY = tileY * 8;
     this.direction = DIRECTION.RIGHT;
     this.nextDirection = null;
-    this.speed = 8;  // tiles per second
+    this.speed = 7.5;  // tiles per second (7.5×8=60px/sec → lands on tile boundary every frame at 60fps)
     this.mouthFrame = 0;
     this.mouthTimer = 0;
     this.mouthInterval = 0.08;  // seconds between frames
@@ -68,25 +68,6 @@ export class PacMan {
       this.moveBufferTime -= dt;
     }
 
-    // Check for turn at intersection
-    const px = this.pixelX % 8;
-    const py = this.pixelY % 8;
-    const onTile = px === 0 && py === 0;
-
-    if (onTile) {
-      this._centerOnTile();
-      this._tryTurn(isWallFn);
-
-      // Move to next tile if direction is free
-      const vec = DIR_VECTORS[this.direction];
-      const nx = this.tileX + vec.dx;
-      const ny = this.tileY + vec.dy;
-      if (!isWallFn(nx, ny)) {
-        this.tileX = nx;
-        this.tileY = ny;
-      }
-    }
-
     // Move pixel-wise along current direction
     const vec = DIR_VECTORS[this.direction];
     const speedPPS = this.speed * 8;  // pixels per second
@@ -97,6 +78,22 @@ export class PacMan {
     const tileW = 28;
     if (this.pixelX < 0) this.pixelX += tileW * 8;
     if (this.pixelX >= tileW * 8) this.pixelX -= tileW * 8;
+
+    // Derive tile position from pixel position
+    const tX = Math.round(this.pixelX / 8);
+    const tY = Math.round(this.pixelY / 8);
+
+    // Update logical tile coords if we crossed into a new tile
+    const oldTX = this.tileX, oldTY = this.tileY;
+    if (tX !== oldTX || tY !== oldTY) {
+      // Snap to tile centre
+      this.pixelX = tX * 8;
+      this.pixelY = tY * 8;
+      this.tileX = tX;
+      this.tileY = tY;
+      // Try buffered turn at intersection
+      this._tryTurn(isWallFn);
+    }
   }
 
   respawn() {
