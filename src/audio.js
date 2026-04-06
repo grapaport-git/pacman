@@ -9,7 +9,12 @@ const _AUDIO_POLYFILL = `
 
 export class AudioManager {
   constructor() {
-    this.ctx = null;
+    // Create AudioContext immediately so it's ready (not suspended by browser policy)
+    try {
+      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch(e) {
+      this.ctx = null;
+    }
     this.musicGain = null;
     this.sfxGain = null;
     this.currentMusic = null;
@@ -18,10 +23,11 @@ export class AudioManager {
     this._visible = true;
   }
 
-  // Unlock AudioContext on first user interaction
+  // Call once on DOMContentLoaded to set up audio graph and event listeners
   init() {
-    if (this.ctx) return;
-    this.ctx = new AudioContext();
+    if (!this.ctx) return;
+    if (this.musicGain) return;  // already set up
+
     this.musicGain = this.ctx.createGain();
     this.sfxGain = this.ctx.createGain();
     this.musicGain.connect(this.ctx.destination);
@@ -31,13 +37,17 @@ export class AudioManager {
 
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
-        this.ctx.suspend();
+        if (this.ctx && this.ctx.state === 'running') this.ctx.suspend();
         this._visible = false;
       } else {
-        if (this.ctx.state === 'suspended') this.ctx.resume();
+        this._resume();
         this._visible = true;
       }
     });
+
+    // Also resume on any user interaction
+    const resumeOnInteraction = () => { this._resume(); removeEventListener('click', resumeOnInteraction); };
+    addEventListener('click', resumeOnInteraction);
   }
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
