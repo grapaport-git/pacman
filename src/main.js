@@ -96,8 +96,10 @@ function handleKey(e) {
     } else if (e.key === 'Enter') {
       audio.play('menuSelect');
       // Start selected level
-      game.level = mapSelectedLevel;
+      const chosenLevel = mapSelectedLevel;
       game.restartGame();
+      game.level = chosenLevel;
+      game._initLevel();
       game.state = 'start';
       audio.play('gameStart');
       audio.stopMusic();
