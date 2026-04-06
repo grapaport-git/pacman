@@ -5,6 +5,95 @@ let tileSize = 8;
 let viewportScale = 1;
 let scorePopups = [];  // { text, x, y, timer, color }
 
+// ── Screen Shake ─────────────────────────────────────────────────────────────
+let _shake = { offsetX: 0, offsetY: 0, startTime: 0, intensity: 0, duration: 0 };
+
+export function screenShake(intensity, durationMs) {
+  _shake = { offsetX: 0, offsetY: 0, startTime: Date.now(), intensity, duration: durationMs };
+}
+
+export function applyShake(ctx) {
+  if (_shake.duration <= 0) return;
+  const elapsed = Date.now() - _shake.startTime;
+  if (elapsed >= _shake.duration) {
+    _shake.duration = 0;
+    _shake.offsetX = 0;
+    _shake.offsetY = 0;
+    return;
+  }
+  const progress = elapsed / _shake.duration;           // 0→1
+  const decay    = 1 - progress;                       // 1→0
+  const intensity = _shake.intensity * decay;
+  _shake.offsetX = (Math.random() * 2 - 1) * intensity;
+  _shake.offsetY = (Math.random() * 2 - 1) * intensity;
+  ctx.translate(_shake.offsetX, _shake.offsetY);
+}
+
+export function resetShake() {
+  _shake = { offsetX: 0, offsetY: 0, startTime: 0, intensity: 0, duration: 0 };
+}
+
+// ── Screen Wipe Transition ───────────────────────────────────────────────────
+
+export function screenWipe(ctx, canvasW, canvasH, progress, direction = 'left') {
+  // progress: 0.0 (nothing shown) → 1.0 (fully revealed)
+  const wipeX = direction === 'left' ? canvasW * (1 - progress) : canvasW * progress;
+  // Pac-Man icon at the wipe leading edge, eating dots
+  const pacSize = tileSize * 2.5;
+  const pacX    = direction === 'left' ? wipeX - pacSize / 2 : wipeX + pacSize / 2;
+  const pacY    = canvasH / 2;
+
+  // Wipe bar
+  ctx.fillStyle = '#000';
+  if (direction === 'left') {
+    ctx.fillRect(0, 0, wipeX, canvasH);
+  } else {
+    ctx.fillRect(wipeX, 0, canvasW - wipeX, canvasH);
+  }
+
+  // Pac-Man chomping at leading edge
+  const mouthAngle = 0.3 * Math.abs(Math.sin(Date.now() / 100));
+  ctx.fillStyle = '#ffff00';
+  ctx.save();
+  ctx.translate(pacX, pacY);
+  ctx.beginPath();
+  ctx.arc(0, 0, pacSize / 2, mouthAngle, Math.PI * 2 - mouthAngle);
+  ctx.lineTo(0, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // Trail dots behind Pac-Man
+  ctx.fillStyle = '#ffb8ae';
+  for (let i = 1; i <= 6; i++) {
+    const dotX = direction === 'left' ? wipeX - i * pacSize * 0.5 : wipeX + i * pacSize * 0.5;
+    const dotY = pacY + Math.sin(i * 0.8) * 10;
+    const alpha = 1 - i / 7;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.arc(dotX, dotY, tileSize / 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ── Mode Shift Flash (power-pellet) ─────────────────────────────────────────
+
+export function flashModeShift(ctx, maze, frameCount) {
+  if (frameCount >= 6) return;
+  const flash = frameCount % 2 === 0;
+  const h = maze.length;
+  const w = maze[0].length;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (maze[y][x] === 1) {
+        ctx.fillStyle = flash ? '#ffffff' : '#2121de';
+        ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+      }
+    }
+  }
+}
+
 export function initCanvas(id = 'game', ts = 8) {
   tileSize = ts;
   canvas = document.getElementById(id);
@@ -190,16 +279,23 @@ export function renderOverlay(text, subtext) {
   }
 }
 
-export function renderGameOver(score) {
-  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+export function renderGameOver(score, isHighScore) {
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (isHighScore) {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = `bold ${tileSize * 1.5}px monospace`;
+    ctx.fillText('NEW HIGH SCORE!', 28, 110);
+  }
   ctx.fillStyle = '#ff0000';
   ctx.font = `bold ${tileSize * 2}px monospace`;
-  ctx.fillText('GAME OVER', 55, 130);
+  ctx.fillText('GAME OVER', 55, 150);
   ctx.fillStyle = '#fff';
   ctx.font = `${tileSize}px monospace`;
-  ctx.fillText(`FINAL SCORE: ${score}`, 55, 155);
-  ctx.fillText('PRESS ENTER TO RETRY', 40, 180);
+  ctx.fillText(`FINAL SCORE: ${score}`, 55, 178);
+  ctx.fillStyle = '#aaa';
+  ctx.font = `${tileSize * 0.7}px monospace`;
+  ctx.fillText('PRESS ENTER TO CONTINUE', 22, 205);
 }
 
 export function getCtx() { return ctx; }

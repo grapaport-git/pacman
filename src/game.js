@@ -6,6 +6,7 @@ import { Ghost, Blinky, Pinky, Inky, Clyde, GHOST_MODE } from './ghosts.js';
 import { LEVEL_CONFIG, LEVELS, generateLevel } from './levels/index.js';
 import { PowerUpManager } from './powerups/powerup.js';
 import { COIN_TABLE } from './powerups/index.js';
+import { screenShake } from './renderer.js';
 
 export class GameState {
   constructor() {
@@ -18,10 +19,13 @@ export class GameState {
     this.powerTimer = 0;
     this.ghostEatScore = 0;
     this.dyingTimer = 0;
-    this.dyingMax = 0.5;
+    this.dyingMax = 0.8;
     this.levelCompleteTimer = 0;
     this.levelCompleteMax = 2.0;
     this.dotsRemaining = 0;
+    this.enteringName = false;
+    this.showLeaderboard = false;
+    this.unlockedLevels = 1;
     this.magnetActive = false;
     this.magnetRadius = 0;
     this.scoreMultiplier = 1;
@@ -34,6 +38,7 @@ export class GameState {
     this.powerUpStore   = { coins: 0, purchasedUpgrades: [] };
     this.particleSystem = [];
     this.activeFlash    = 0;
+    this.modeShiftFrames = 0;  // Phase 4: flash walls for N frames after power-pellet
     this._initLevel();
   }
 
@@ -72,10 +77,12 @@ export class GameState {
   }
 
   activatePowerMode() {
+    if (window.audio) window.audio.play('powerup');
     const cfg = this._currentConfig();
     this.powerMode = true;
     this.powerTimer = cfg.frightenedDuration;
     this.ghostEatScore = 0;
+    this.modeShiftFrames = 6;  // flash walls for 6 frames
     this.ghosts.forEach(g => {
       if (g.mode !== GHOST_MODE.DEAD) {
         g.enterFrightened();
@@ -105,14 +112,20 @@ export class GameState {
   }
 
   loseLife() {
+    if (window.audio) window.audio.play('death');
+    screenShake(4, 250);
     this.lives--;
     this.state = 'dying';
     this.dyingTimer = this.dyingMax;
+    this.enteringName = false;
+    this.showLeaderboard = false;
   }
 
   respawn() {
     if (this.lives <= 0) {
       this.state = 'gameover';
+      this.enteringName = true;
+      this.showLeaderboard = false;
       if (this.score > this.highScore) {
         this.highScore = this.score;
         localStorage.setItem('pacman_highscore', String(this.score));
@@ -143,6 +156,9 @@ export class GameState {
             : this.ghostEatScore === 200 ? 400
             : this.ghostEatScore === 400 ? 800 : 1600;
           this.score += this.ghostEatScore;
+            if (window.audio) window.audio.playGhostEat(
+              this.ghostEatScore === 200 ? 0 : this.ghostEatScore === 400 ? 1 : this.ghostEatScore === 800 ? 2 : 3
+            );
         } else if (ghost.mode === GHOST_MODE.CHASE || ghost.mode === GHOST_MODE.SCATTER) {
           this.loseLife();
         }
@@ -169,6 +185,7 @@ export class GameState {
 
   update(dt) {
     if (this.state === 'dying') {
+      // Freeze all movement; only countdown death timer
       this.dyingTimer -= dt;
       if (this.dyingTimer <= 0) this.respawn();
       return;
@@ -181,6 +198,9 @@ export class GameState {
     }
 
     if (this.state === 'gameover' || this.state === 'start') return;
+
+    // Decay mode-shift flash counter
+    if (this.modeShiftFrames > 0) this.modeShiftFrames--;
 
     // Power mode countdown
     if (this.powerMode) {
