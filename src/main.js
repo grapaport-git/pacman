@@ -260,10 +260,6 @@ function gameLoop(ts) {
 
   if (!game) { requestAnimationFrame(gameLoop); return; }
 
-  const px = game.pacman.pixelX % 8, py = game.pacman.pixelY % 8;
-  const onTile = Math.abs(px) < 0.01 && Math.abs(py) < 0.01;
-  window._dbg = `${game.state}|d=${game.pacman.direction}|n=${game.pacman.nextDirection}|ot=${onTile}|px=${Math.round(game.pacman.pixelX)}|py=${Math.round(game.pacman.pixelY)}`;
-
   const ctx      = getCtx();
   const t        = getTileSize();
   const canvasW  = 28 * t;
@@ -387,12 +383,6 @@ function gameLoop(ts) {
   }
 
   ctx.restore();
-  if (window._dbg) {
-    const dc = getCtx();
-    dc.fillStyle = '#fff';
-    dc.font = '7px monospace';
-    dc.fillText(window._dbg, 3, canvasH - 3);
-  }
   requestAnimationFrame(gameLoop);
 }
 
