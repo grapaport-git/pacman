@@ -37,21 +37,26 @@ export class PowerUpManager {
   /**
    * Activate a power-up by id.
    * @param {string} typeId
+   * @param {object|null} upgrade - optional upgrade object with custom duration/speedMult/etc.
    */
-  activate(typeId) {
+  activate(typeId, upgrade) {
     const pu = this._powerUps[typeId];
     if (!pu) return;
     pu.active = true;
-    pu.timer = pu.maxDuration;
-    this._applyEffect(typeId, true);
+    pu.timer = upgrade && upgrade.duration ? upgrade.duration : pu.maxDuration;
+    this._applyEffect(typeId, true, upgrade);
   }
 
-  _applyEffect(typeId, on) {
+  _applyEffect(typeId, on, upgrade) {
     const g = this.game;
     switch (typeId) {
       case 'speed_boost':
-        if (on) g.pacman.speed *= 1.5;
-        else g.pacman.speed /= 1.5;
+        if (on) {
+          const mult = upgrade && upgrade.speedMult ? upgrade.speedMult : 1.5;
+          g.pacman.speed *= mult;
+        } else {
+          g.pacman.speed /= upgrade && upgrade.speedMult ? upgrade.speedMult : 1.5;
+        }
         break;
       case 'shield':
         g.invincible = on ? true : false;
@@ -65,10 +70,10 @@ export class PowerUpManager {
         break;
       case 'magnet':
         g.magnetActive = on ? true : false;
-        g.magnetRadius = on ? 3 : 0;
+        g.magnetRadius = on ? (upgrade && upgrade.magnetRadius ? upgrade.magnetRadius : 3) : 0;
         break;
       case 'score_multiplier':
-        g.scoreMultiplier = on ? 2 : 1;
+        g.scoreMultiplier = on ? (upgrade && upgrade.multiplier ? upgrade.multiplier : 2) : 1;
         break;
     }
   }
