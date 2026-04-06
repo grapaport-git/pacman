@@ -1,227 +1,291 @@
-// AudioManager — pure Web Audio API synthesis, no external files
+// ─── Audio Manager — Pure Web Audio API synthesis ─────────────────────────────
+// No external audio files. All sounds are synthesized on the fly.
+
+const _AUDIO_POLYFILL = `
+  if (typeof AudioContext === 'undefined' && typeof webkitAudioContext !== 'undefined') {
+    window.AudioContext = webkitAudioContext;
+  }
+`;
+
 export class AudioManager {
   constructor() {
+    eval(_AUDIO_POLYFILL);
     this.ctx = null;
     this.musicGain = null;
     this.sfxGain = null;
     this.currentMusic = null;
-    this.musicGainNode = null;
-    this._initialized = false;
+    this.musicOscillators = [];
+    this._musicPlaying = false;
+    this._visible = true;
   }
 
-  _createContext() {
-    if (typeof window !== 'undefined' && window.AudioContext) {
-      this.ctx = new window.AudioContext();
-    } else if (typeof window !== 'undefined' && window.webkitAudioContext) {
-      this.ctx = new window.webkitAudioContext();
-    }
-    // Node.js polyfill
-    if (!this.ctx && typeof process !== 'undefined') {
-      this.ctx = null; // skip in node, init() will retry
-    }
-    this.musicGain = this.ctx ? this.ctx.createGain() : null;
-    this.sfxGain = this.ctx ? this.ctx.createGain() : null;
-    if (this.musicGain) {
-      this.musicGain.gain.value = 0.4;
-      this.musicGain.connect(this.ctx.destination);
-    }
-    if (this.sfxGain) {
-      this.sfxGain.gain.value = 0.8;
-      this.sfxGain.connect(this.ctx.destination);
-    }
-  }
-
+  // Unlock AudioContext on first user interaction
   init() {
-    if (this._initialized) return;
-    this._createContext();
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
-    }
-    this._initialized = true;
+    if (this.ctx) return;
+    this.ctx = new AudioContext();
+    this.musicGain = this.ctx.createGain();
+    this.sfxGain = this.ctx.createGain();
+    this.musicGain.connect(this.ctx.destination);
+    this.sfxGain.connect(this.ctx.destination);
+    this.musicGain.gain.value = 0.4;
+    this.sfxGain.gain.value = 0.7;
 
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', () => {
-        if (this.ctx) {
-          if (document.hidden) {
-            this.ctx.suspend();
-          } else {
-            this.ctx.resume();
-          }
-        }
-      });
-    }
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.ctx.suspend();
+        this._visible = false;
+      } else {
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        this._visible = true;
+      }
+    });
   }
 
-  _playTone(freq, duration, type = 'sine', volume = 0.5, gainNode = null, detune = 0) {
-    if (!this.ctx) return;
+  // ── Helpers ─────────────────────────────────────────────────────────────────
+
+  _resume() {
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume();
+  }
+
+  _tone(freq, type, startTime, duration, gainNode, volume = 0.5) {
     const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const g = this.ctx.createGain();
     osc.type = type;
-    osc.frequency.value = freq;
-    osc.detune.value = detune;
-    gain.gain.value = volume;
-    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
-    osc.connect(gain);
-    gain.connect(gainNode || this.sfxGain || this.ctx.destination);
-    osc.start();
-    osc.stop(this.ctx.currentTime + duration);
+    osc.frequency.setValueAtTime(freq, startTime);
+    g.gain.setValueAtTime(volume, startTime);
+    g.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    osc.connect(g);
+    g.connect(gainNode || this.sfxGain);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.01);
+    return osc;
   }
 
-  _playNoise(duration, volume = 0.3) {
-    if (!this.ctx) return;
-    const bufferSize = this.ctx.sampleRate * duration;
-    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-      data[i] = (Math.random() * 2 - 1) * 0.5;
-    }
-    const source = this.ctx.createBufferSource();
-    source.buffer = buffer;
-    const gain = this.ctx.createGain();
-    gain.gain.value = volume;
-    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
-    source.connect(gain);
-    gain.connect(this.sfxGain || this.ctx.destination);
-    source.start();
-    source.stop(this.ctx.currentTime + duration);
-  }
-
-  _playSweep(startFreq, endFreq, duration, type = 'sine', volume = 0.5, gainNode = null) {
-    if (!this.ctx) return;
+  _sweep(freqStart, freqEnd, type, startTime, duration, gainNode, volume = 0.5) {
     const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
+    const g = this.ctx.createGain();
     osc.type = type;
-    osc.frequency.setValueAtTime(startFreq, this.ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(endFreq, this.ctx.currentTime + duration);
-    gain.gain.value = volume;
-    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
-    osc.connect(gain);
-    gain.connect(gainNode || this.sfxGain || this.ctx.destination);
-    osc.start();
-    osc.stop(this.ctx.currentTime + duration);
+    osc.frequency.setValueAtTime(freqStart, startTime);
+    osc.frequency.exponentialRampToValueAtTime(freqEnd, startTime + duration);
+    g.gain.setValueAtTime(volume, startTime);
+    g.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    osc.connect(g);
+    g.connect(gainNode || this.sfxGain);
+    osc.start(startTime);
+    osc.stop(startTime + duration + 0.01);
+    return osc;
   }
+
+  _noise(startTime, duration, gainNode, volume = 0.3) {
+    const bufSize = this.ctx.sampleRate * duration;
+    const buf = this.ctx.createBuffer(1, bufSize, this.ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    const g = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 3000;
+    filter.Q.value = 0.5;
+    g.gain.setValueAtTime(volume, startTime);
+    g.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    src.connect(filter);
+    filter.connect(g);
+    g.connect(gainNode || this.sfxGain);
+    src.start(startTime);
+    src.stop(startTime + duration + 0.01);
+  }
+
+  // ── Sound Effects ───────────────────────────────────────────────────────────
 
   play(name) {
-    if (!this.ctx || !this._initialized) this.init();
-    if (!this.ctx) return;
+    this._resume();
+    const t = this.ctx.currentTime;
 
     switch (name) {
-      case 'munch':
-        this._playNoise(0.05, 0.25);
-        break;
-      case 'powerup':
-        this._playSweep(200, 800, 0.3, 'sine', 0.6);
-        break;
-      case 'ghostEat': {
-        // Frequency set by caller via playGhostEat
+      case 'munch': {
+        // White noise burst, 50ms
+        this._noise(t, 0.05, this.sfxGain, 0.25);
         break;
       }
-      case 'death':
-        this._playSweep(600, 100, 0.8, 'sawtooth', 0.4);
+
+      case 'powerup': {
+        // Sine sweep 200→800Hz over 300ms
+        this._sweep(200, 800, 'sine', t, 0.3, this.sfxGain, 0.5);
         break;
-      case 'levelComplete':
-        this._playTone(523, 0.08, 'square', 0.3);
-        setTimeout(() => this._playTone(659, 0.08, 'square', 0.3), 90);
-        setTimeout(() => this._playTone(784, 0.08, 'square', 0.3), 180);
-        setTimeout(() => this._playTone(1047, 0.15, 'square', 0.3), 270);
+      }
+
+      case 'ghostEat': {
+        // Frequency based on ghostEatCount (passed via game instance)
+        // Default 400Hz; caller can override by calling playGhostEat(freq)
+        const freq = this._ghostEatFreq || 400;
+        this._tone(freq, 'square', t, 0.15, this.sfxGain, 0.4);
         break;
-      case 'menuSelect':
-        this._playTone(800, 0.03, 'sine', 0.4);
+      }
+
+      case 'death': {
+        // Sine sweep 600→100Hz over 800ms with detune wobble
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, t);
+        osc.frequency.exponentialRampToValueAtTime(100, t + 0.8);
+        // Slight detune wobble via LFO
+        const lfo = this.ctx.createOscillator();
+        const lfoGain = this.ctx.createGain();
+        lfo.frequency.value = 8;
+        lfoGain.gain.value = 15;
+        lfo.connect(lfoGain);
+        lfoGain.connect(osc.detune);
+        g.gain.setValueAtTime(0.6, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+        osc.connect(g);
+        g.connect(this.sfxGain);
+        lfo.start(t);
+        lfo.stop(t + 0.85);
+        osc.start(t);
+        osc.stop(t + 0.85);
         break;
-      case 'gameStart':
-        this._playSweep(300, 600, 0.2, 'sine', 0.5);
+      }
+
+      case 'levelComplete': {
+        // Ascending arpeggio C5-E5-G5-C6, 80ms per note
+        const notes = [523, 659, 784, 1047];
+        notes.forEach((freq, i) => {
+          const nt = t + i * 0.08;
+          this._tone(freq, 'square', nt, 0.07, this.sfxGain, 0.35);
+        });
         break;
+      }
+
+      case 'menuSelect': {
+        this._tone(800, 'sine', t, 0.03, this.sfxGain, 0.4);
+        break;
+      }
+
+      case 'gameStart': {
+        this._sweep(300, 600, 'sawtooth', t, 0.2, this.sfxGain, 0.5);
+        break;
+      }
     }
   }
 
-  playGhostEat(ghostIndex) {
-    if (!this.ctx) return;
+  // Variant for ghostEat with escalating pitch
+  playGhostEat(ghostEatCount) {
     const freqs = [400, 500, 600, 800];
-    this._playTone(freqs[Math.min(ghostIndex, 3)] || 400, 0.15, 'square', 0.5);
+    this._ghostEatFreq = freqs[Math.min(ghostEatCount || 0, 3)];
+    this.play('ghostEat');
+  }
+
+  // ── Background Music ────────────────────────────────────────────────────────
+
+  _note(freq, type, startBeat, beats, bpm, gainNode, vol = 0.3) {
+    const beatDur = 60 / bpm;
+    const t = this.ctx.currentTime + startBeat * beatDur;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = type;
+    osc.frequency.value = freq;
+    const dur = beats * beatDur * 0.85;
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(vol, t + 0.02);
+    g.gain.setValueAtTime(vol, t + dur - 0.03);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+    osc.connect(g);
+    g.connect(gainNode || this.musicGain);
+    osc.start(t);
+    osc.stop(t + dur + 0.01);
+    this.musicOscillators.push(osc);
+  }
+
+  _playMelody(notes, bpm, loop = true) {
+    this._stopMusicInternal();
+    const beatDur = 60 / bpm;
+    const totalBeats = notes.length;
+    let offset = 0;
+
+    const schedule = () => {
+      if (!this._musicPlaying) return;
+      notes.forEach(([freq, type, beats, vol]) => {
+        this._note(freq, type || 'square', offset, beats, bpm, null, vol || 0.3);
+        offset += beats;
+      });
+      const totalDur = totalBeats * beatDur * 1000;
+      this._musicTimeout = setTimeout(() => {
+        if (this._musicPlaying) {
+          offset = 0;
+          schedule();
+        }
+      }, totalDur);
+    };
+
+    this._musicPlaying = true;
+    schedule();
   }
 
   playMusic(name) {
-    if (!this.ctx) return;
-    this.stopMusic();
-    if (name === 'menu') {
-      this._playMenuMusic();
-    } else if (name === 'gameplay') {
-      this._playGameplayMusic();
+    this._resume();
+    switch (name) {
+      case 'menu': {
+        // Calm 4-bar melody, 100 BPM
+        const bars = [
+          // Bar 1
+          [392, 'triangle', 1, 0.25], [440, 'triangle', 1, 0.25],
+          [494, 'triangle', 1, 0.25], [523, 'triangle', 1, 0.25],
+          // Bar 2
+          [494, 'triangle', 2, 0.25],
+          [440, 'triangle', 2, 0.25],
+          // Bar 3
+          [392, 'triangle', 1, 0.25], [523, 'triangle', 1, 0.25],
+          [440, 'triangle', 1, 0.25], [494, 'triangle', 1, 0.25],
+          // Bar 4
+          [392, 'triangle', 4, 0.25],
+        ];
+        this._playMelody(bars, 100, true);
+        break;
+      }
+      case 'gameplay': {
+        // Faster 4-bar melody, 130 BPM — more energetic
+        const bars = [
+          // Bar 1
+          [262, 'square', 0.5, 0.2], [330, 'square', 0.5, 0.2],
+          [392, 'square', 0.5, 0.2], [523, 'square', 0.5, 0.2],
+          // Bar 2
+          [494, 'square', 1, 0.25], [440, 'square', 1, 0.25],
+          // Bar 3
+          [392, 'square', 0.5, 0.2], [330, 'square', 0.5, 0.2],
+          [262, 'square', 0.5, 0.2], [294, 'square', 0.5, 0.2],
+          // Bar 4
+          [330, 'square', 2, 0.25],
+        ];
+        this._playMelody(bars, 130, true);
+        break;
+      }
     }
   }
 
-  _playMenuMusic() {
-    if (!this.ctx || !this.musicGain) return;
-    const notes = [392, 440, 494, 523, 494, 440, 392, 349];
-    const tempo = 0.35;
-    let offset = 0;
-    const playNote = (i) => {
-      if (!this.ctx || !this.musicGain) return;
-      const osc = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.value = notes[i % notes.length];
-      g.gain.setValueAtTime(0.3, this.ctx.currentTime + offset);
-      g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + offset + tempo * 0.9);
-      osc.connect(g);
-      g.connect(this.musicGain);
-      osc.start(this.ctx.currentTime + offset);
-      osc.stop(this.ctx.currentTime + offset + tempo);
-      offset += tempo;
-      if (offset < notes.length * tempo * 2) {
-        setTimeout(() => playNote(Math.floor(offset / tempo)), tempo * 1000);
-      } else {
-        setTimeout(() => this._playMenuMusic(), 200);
-      }
-    };
-    playNote(0);
-  }
-
-  _playGameplayMusic() {
-    if (!this.ctx || !this.musicGain) return;
-    const notes = [262, 330, 392, 523, 392, 330, 262, 294];
-    const tempo = 0.22;
-    let offset = 0;
-    const playNote = (i) => {
-      if (!this.ctx || !this.musicGain) return;
-      const osc = this.ctx.createOscillator();
-      const g = this.ctx.createGain();
-      osc.type = 'triangle';
-      osc.frequency.value = notes[i % notes.length];
-      g.gain.setValueAtTime(0.25, this.ctx.currentTime + offset);
-      g.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + offset + tempo * 0.85);
-      osc.connect(g);
-      g.connect(this.musicGain);
-      osc.start(this.ctx.currentTime + offset);
-      osc.stop(this.ctx.currentTime + offset + tempo);
-      offset += tempo;
-      if (offset < notes.length * tempo * 2) {
-        setTimeout(() => playNote(Math.floor(offset / tempo)), tempo * 1000);
-      } else {
-        setTimeout(() => this._playGameplayMusic(), 150);
-      }
-    };
-    playNote(0);
+  _stopMusicInternal() {
+    this._musicPlaying = false;
+    if (this._musicTimeout) {
+      clearTimeout(this._musicTimeout);
+      this._musicTimeout = null;
+    }
+    this.musicOscillators.forEach(o => {
+      try { o.stop(); } catch (_) {}
+    });
+    this.musicOscillators = [];
   }
 
   stopMusic() {
-    if (!this.ctx) return;
-    // Music loops are handled by setTimeout recursion — stop by nulling gain
-    if (this.musicGain) {
-      this.musicGain.disconnect();
-      this.musicGain = null;
-    }
+    this._stopMusicInternal();
   }
 
   setMusicVolume(v) {
-    if (this.ctx && this.musicGain) {
-      this.musicGain.gain.value = Math.max(0, Math.min(1, v)) * 0.4;
-    }
+    if (this.musicGain) this.musicGain.gain.value = Math.max(0, Math.min(1, v)) * 0.4;
   }
 
   setSFXVolume(v) {
-    if (this.ctx && this.sfxGain) {
-      this.sfxGain.gain.value = Math.max(0, Math.min(1, v)) * 0.8;
-    }
+    if (this.sfxGain) this.sfxGain.gain.value = Math.max(0, Math.min(1, v)) * 0.7;
   }
 }
