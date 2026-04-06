@@ -13,8 +13,8 @@ const GHOST_END_X   = 400;
 const GHOST_Y       = 105;
 const GHOST_SPACING = 22;
 
-let animFrame  = 0;
-let ghostX     = GHOST_START_X;
+let animFrame = 0;
+let ghostX = GHOST_START_X;
 let pacmanFrame = 0;
 
 export function resetMenuAnim() {

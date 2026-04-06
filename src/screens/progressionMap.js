@@ -120,13 +120,12 @@ function drawControlsHint(ctx, canvasW, canvasH, tileSz) {
 /**
  * @param {number} currentLevel  1-indexed level Pac-Man is currently on
  * @param {number[]} unlockedLevels  array of unlocked level numbers (1-indexed)
- * @param {number} selectedIndex  index into unlockedLevels array (not level number)
+ * @param {number} selectedLevel  level number currently selected (must be unlocked)
  */
-export function renderProgressionMap(ctx, canvasW, canvasH, currentLevel, unlockedLevels, selectedIndex) {
+export function renderProgressionMap(ctx, canvasW, canvasH, currentLevel, unlockedLevels, selectedLevel) {
   const tileSz   = 8;
   const cx       = canvasW / 2;
   const startY   = HEADER_H + 20;
-  const endY     = startY + (TOTAL_LEVELS - 1) * NODE_SPACING;
 
   // Background
   ctx.fillStyle = '#000';
@@ -134,13 +133,15 @@ export function renderProgressionMap(ctx, canvasW, canvasH, currentLevel, unlock
 
   // Header
   drawHeader(ctx, canvasW, currentLevel, tileSz);
-  drawCoinBalance(ctx, canvasW, 0, tileSz); // coins injected by caller if available
 
   // Clip to content area
   const contentH = canvasH - HEADER_H - 20;
+  const totalH  = (TOTAL_LEVELS - 1) * NODE_SPACING;
+  // Scroll so selected node is centered
+  const selIdx  = unlockedLevels.indexOf(selectedLevel);
   const scrollOffset = Math.max(0, Math.min(
-    selectedIndex * NODE_SPACING - contentH / 2 + NODE_SPACING / 2,
-    (TOTAL_LEVELS - 1) * NODE_SPACING - contentH + NODE_SPACING
+    (selIdx >= 0 ? selIdx : 0) * NODE_SPACING - contentH / 2 + NODE_SPACING / 2,
+    totalH - contentH + NODE_SPACING
   ));
 
   ctx.save();
@@ -163,11 +164,10 @@ export function renderProgressionMap(ctx, canvasW, canvasH, currentLevel, unlock
 
     const isUnlocked = unlockedLevels.includes(lvl);
     const isCurrent  = lvl === currentLevel;
-    const selLvl     = unlockedLevels[selectedIndex] || 0;
-    const isSelected = lvl === selLvl && isUnlocked;
+    const isSelected = lvl === selectedLevel && isUnlocked;
 
     const status = !isUnlocked ? 'locked' : isCurrent ? 'current' : 'unlocked';
-    drawNode(ctx, cx, y, lvl, status, isSelected, tileSz, 0);
+    drawNode(ctx, cx, y, lvl, status, isSelected, tileSz, Math.floor(Date.now() / 100));
   }
 
   ctx.restore();

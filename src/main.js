@@ -14,12 +14,14 @@ import { PowerUpStore, UPGRADE_TREE } from './powerups/upgrades.js';
 import { COIN_TABLE } from './powerups/index.js';
 import { AudioManager } from './audio.js';
 import { Leaderboard, NameEntry, renderLeaderboard, renderNameEntry } from './systems/leaderboard.js';
-import { renderMainMenu } from './screens/menu.js';
+import { renderMainMenu, tickMenuAnim } from './screens/menu.js';
 import { renderPauseMenu } from './screens/pause.js';
 import { renderProgressionMap } from './screens/progressionMap.js';
+import { renderGameOverScreen } from './screens/gameOver.js';
 
 let game;
 let lastTime = 0;
+let animFrame = 0;
 let upgradeSelectedIndex = 0;
 let store;
 let audio;
@@ -247,6 +249,7 @@ function gameLoop(ts) {
   // ── RENDER by state ──
   if (game.state === 'menu') {
     clearFrame();
+    tickMenuAnim(dt);
     renderMainMenu(ctx, canvasW, canvasH, menuSelectedIndex);
 
   } else if (game.state === 'controls') {
@@ -259,7 +262,7 @@ function gameLoop(ts) {
 
   } else if (game.state === 'map') {
     clearFrame();
-    renderProgressionMap(ctx, canvasW, canvasH, mapSelectedLevel, unlockedLevels, game.level);
+    renderProgressionMap(ctx, canvasW, canvasH, mapSelectedLevel, unlockedLevels, mapSelectedLevel, animFrame);
 
   } else if (game.state === 'paused') {
     clearFrame();
@@ -282,6 +285,11 @@ function gameLoop(ts) {
 
     clearFrame();
     renderMaze(game.maze);
+
+    // Flash maze walls during mode-shift (power-pellet)
+    if (game.modeShiftFrames > 0) {
+      flashModeShift(ctx, game.maze, game.modeShiftFrames);
+    }
 
     if (game.magnetActive) {
       renderMagnetGlow(ctx, game.pacman.tileX, game.pacman.tileY, t, game.magnetRadius || 4);
@@ -306,6 +314,8 @@ function gameLoop(ts) {
     clearFrame();
     renderMaze(game.maze);
     renderOverlay('LEVEL COMPLETE!', `SCORE: ${game.score}`);
+    const wp = Math.min(1, 1 - game.levelCompleteTimer / (game.levelCompleteMax || 2));
+    screenWipe(ctx, canvasW, canvasH, wp, 'left');
 
   } else if (game.state === 'upgrade') {
     clearFrame();
@@ -333,6 +343,8 @@ function gameLoop(ts) {
   }
 
   requestAnimationFrame(gameLoop);
+
+  ctx.restore();
 }
 
 function renderControlsOverlay(ctx, canvasW, canvasH) {
