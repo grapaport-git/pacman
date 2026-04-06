@@ -5,6 +5,7 @@ import { PacMan, DIRECTION } from './pacman.js';
 import { Ghost, Blinky, Pinky, Inky, Clyde, GHOST_MODE } from './ghosts.js';
 import { LEVEL_CONFIG, LEVELS, generateLevel } from './levels/index.js';
 import { PowerUpManager } from './powerups/powerup.js';
+import { COIN_TABLE } from './powerups/index.js';
 
 export class GameState {
   constructor() {
@@ -89,7 +90,7 @@ export class GameState {
     const cfg = this._currentConfig();
     if (tile === 2) {
       this.maze[y][x] = 0;
-    this.score += cfg.dotBonus * (this.scoreMultiplier || 1);
+      this.score += cfg.dotBonus * (this.scoreMultiplier || 1);
       this.dotsRemaining--;
       return true;
     }
@@ -119,7 +120,6 @@ export class GameState {
     } else {
       this.pacman.respawn();
       this.ghosts.forEach(g => g.respawn());
-      this.powerUpManager = new PowerUpManager(this);
       this.state = 'playing';
     }
   }
@@ -151,6 +151,9 @@ export class GameState {
   }
 
   nextLevel() {
+    if (this.powerUpStore && this.powerUpStore.earnCoins) {
+      this.powerUpStore.earnCoins(COIN_TABLE(this.level));
+    }
     this.level++;
     this._initLevel();
     this.state = 'playing';

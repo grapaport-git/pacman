@@ -210,14 +210,11 @@ export function getTileSize() { return tileSize; }
 const _particles = [];  // { x, y, vx, vy, color, life, maxLife, size }
 
 const POWERUP_COLORS_HUD = {
-  speed:        '#00ff88',
-  triple:       '#ff44ff',
-  ghostfreeze:  '#44aaff',
-  scoreboost:   '#ffdd00',
-  magnet:       '#ffaa00',
-  shield:       '#ff4444',
-  ghostbomb:    '#ff8800',
-  slowmo:       '#88ccff',
+  speed_boost:        '#00ff88',
+  shield:              '#44aaff',
+  ghost_rush:          '#ff44ff',
+  magnet:              '#ffaa00',
+  score_multiplier:    '#ffdd00',
 };
 
 export function spawnParticles(x, y, color, count = 8) {
@@ -274,8 +271,16 @@ export function renderMagnetGlow(ctx, pacmanX, pacmanY, tileSz, radius = 4) {
 }
 
 export function renderActivePowerUps(ctx, powerupManager, tileSz) {
-  if (!powerupManager || !powerupManager.activePowerUps) return;
-  const active = Object.entries(powerupManager.activePowerUps);
+  if (!powerupManager) return;
+  // Support both activePowerUps (stub) and _powerUps (Cody's backend)
+  let active = [];
+  if (powerupManager.activePowerUps) {
+    active = Object.entries(powerupManager.activePowerUps);
+  } else if (powerupManager._powerUps) {
+    active = Object.entries(powerupManager._powerUps).filter(([, pu]) => pu.active);
+  } else {
+    return;
+  }
   if (active.length === 0) return;
 
   const iconSize = 12;
@@ -286,12 +291,10 @@ export function renderActivePowerUps(ctx, powerupManager, tileSz) {
 
   for (const [type, data] of active) {
     const color = POWERUP_COLORS_HUD[type] || '#ffffff';
-    // Icon circle
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(slotX + iconSize / 2, hudY + iconSize / 2, iconSize / 2, 0, Math.PI * 2);
     ctx.fill();
-    // Timer bar
     const max = data.maxDuration || 1;
     const frac = Math.max(0, data.timer / max);
     ctx.fillStyle = 'rgba(0,0,0,0.5)';

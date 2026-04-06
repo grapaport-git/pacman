@@ -8,40 +8,14 @@ import { initCanvas, clearFrame, renderMaze, renderPacMan, renderGhost,
 import { GameState } from './game.js';
 import { DIRECTION } from './pacman.js';
 import { renderUpgradeScreen, handleUpgradeKey } from './ui/upgradeScreen.js';
+import { PowerUpManager } from './powerups/powerup.js';
+import { PowerUpStore, UPGRADE_TREE } from './powerups/upgrades.js';
+import { COIN_TABLE } from './powerups/index.js';
 
 let game;
 let lastTime = 0;
 let upgradeSelectedIndex = 0;
-
-// ─── Phase 3: Power-up tree & manager (stub — Cody fills in backend) ────────
-
-const UPGRADE_TREE = {
-  speed:       { tier: 1, cost: 100, duration: 8 },
-  triple:      { tier: 2, cost: 200, duration: 0  },
-  ghostfreeze: { tier: 1, cost: 150, duration: 6 },
-  scoreboost:  { tier: 1, cost: 120, duration: 10 },
-  magnet:      { tier: 2, cost: 250, duration: 7 },
-  shield:      { tier: 1, cost: 100, duration: 5 },
-  ghostbomb:   { tier: 3, cost: 300, duration: 0 },
-  slowmo:      { tier: 1, cost: 180, duration: 6 },
-};
-
-// Minimal PowerUpManager stub — replaced by Cody's full implementation
-class MinimalPowerUpManager {
-  constructor(game) { this.game = game; this.activePowerUps = {}; }
-  update(dt) {}
-  activate(type) {
-    const cfg = UPGRADE_TREE[type];
-    if (!cfg) return;
-    this.activePowerUps[type] = { timer: cfg.duration, maxDuration: cfg.duration };
-    // Wire game flags based on type
-    if (type === 'magnet')      { this.game.magnetActive = true;  this.game.magnetRadius = 4; }
-    if (type === 'shield')      { this.game.invincible    = true; }
-    if (type === 'scoreboost')  { this.game.scoreMultiplier = 2; }
-    if (type === 'speed')       { this.game.pacman.speedBoost = 1.4; }
-  }
-  isActive(type) { return !!this.activePowerUps[type]; }
-}
+let store;
 
 // ─── Input ────────────────────────────────────────────────────────────────────
 
@@ -54,19 +28,27 @@ function handleKey(e) {
 
   // Upgrade screen navigation
   if (game && game.state === 'upgrade') {
-    const types = Object.keys(UPGRADE_TREE);
+    const types = Object.keys(UPGRADE_TREE_BY_TYPE);
     upgradeSelectedIndex = handleUpgradeKey(e.key, upgradeSelectedIndex, types,
-      (type) => {
-        const cfg = UPGRADE_TREE[type];
-        if (!game.powerUpStore.purchasedUpgrades.includes(type) &&
-            game.powerUpStore.coins >= cfg.cost) {
-          game.powerUpStore.coins -= cfg.cost;
-          game.powerUpStore.purchasedUpgrades.push(type);
-          game.powerUpManager.activate(type);
+      (powerUpType) => {
+        // Find highest unpurchased tier for this type
+        const purchased = store.getMaxTier(powerUpType);
+        const nextTier = purchased + 1;
+        const upgradeId = `${powerUpType}_t${nextTier}`;
+        const upgrade = UPGRADE_TREE.find(u => u.id === upgradeId);
+        if (!upgrade) return;
+
+        const result = store.purchase(upgradeId);
+        if (result) {
+          game.powerUpManager.activate(upgrade.powerUpType, result);
+          // Visual feedback
           const c = getCtx();
           const t = getTileSize();
-          spawnParticles(game.pacman.pixelX + t/2, game.pacman.pixelY + t/2,
-                         '#ffdd00', 12);
+          spawnParticles(
+            game.pacman.pixelX + t / 2,
+            game.pacman.pixelY + t / 2,
+            '#ffdd00', 12
+          );
           game.activeFlash = 0.3;
         }
         game.state = 'playing';
@@ -107,8 +89,12 @@ function gameLoop(ts) {
   const canvasH = 31 * ts2 + 16;
 
   // ── UPDATE ──
-  const prevScore = game.score;
   game.update(dt);
+
+  // Tick power-up manager (ms)
+  if (game.powerUpManager) {
+    game.powerUpManager.update(dt * 1000);
+  }
 
   if (game.state === 'levelcomplete') {
     clearFrame();
@@ -119,9 +105,9 @@ function gameLoop(ts) {
     renderMaze(game.maze);
     renderHUD(game.score, game.lives, game.level, game.highScore);
     renderUpgradeScreen(ctx, canvasW, canvasH,
-      game.powerUpStore.coins,
-      game.powerUpStore.purchasedUpgrades,
-      UPGRADE_TREE,
+      store.coins,
+      store.purchasedUpgrades,
+      UPGRADE_TREE_BY_TYPE,
       upgradeSelectedIndex);
   } else if (game.state === 'playing') {
     game.activeFlash = Math.max(0, game.activeFlash - dt);
@@ -129,9 +115,10 @@ function gameLoop(ts) {
     clearFrame();
     renderMaze(game.maze);
 
-    // Magnet glow
+    // Magnet glow effect
     if (game.magnetActive) {
-      renderMagnetGlow(ctx, game.pacman.tileX, game.pacman.tileY, ts2);
+      renderMagnetGlow(ctx, game.pacman.tileX, game.pacman.tileY, ts2,
+        game.magnetRadius || 4);
     }
 
     renderPacMan(game.pacman);
@@ -152,7 +139,7 @@ function gameLoop(ts) {
     renderMaze(game.maze);
     renderHUD(game.score, game.lives, game.level, game.highScore);
     renderGameOver(game.score);
-  } else if (game.state === 'dying' || game.state === 'levelcomplete') {
+  } else if (game.state === 'dying') {
     clearFrame();
     renderMaze(game.maze);
     renderHUD(game.score, game.lives, game.level, game.highScore);
@@ -169,13 +156,35 @@ function init() {
 
   game = new GameState();
 
-  // Wire Phase 3 power-up system (stub manager; Cody replaces with full impl)
-  game.powerUpManager = new MinimalPowerUpManager(game);
-  // Start with some coins for demo
-  game.powerUpStore.coins = 500;
+  // Wire Phase 3 power-up system (Cody's backend)
+  store = new PowerUpStore();
+  game.powerUpManager = new PowerUpManager(game);
+  game.powerUpStore = store;
+  // Earn coins for the level completed
+  store.earnCoins(COIN_TABLE(game.level));
 
   window.addEventListener('keydown', handleKey);
   requestAnimationFrame(ts => { lastTime = ts; requestAnimationFrame(gameLoop); });
 }
 
 window.addEventListener('DOMContentLoaded', init);
+
+// ─── Upgrade tree organised by power-up type (for upgradeScreen) ──────────────
+// Map of type id → { name, icon, color, tiers: [...] }
+// This feeds the upgrade screen's card layout.
+
+const _types = {};
+for (const u of UPGRADE_TREE) {
+  if (!_types[u.powerUpType]) {
+    _types[u.powerUpType] = {
+      name: u.powerUpType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+      tiers: [],
+    };
+  }
+  _types[u.powerUpType].tiers.push(u);
+}
+
+const UPGRADE_TREE_BY_TYPE = {};
+for (const [id, data] of Object.entries(_types)) {
+  UPGRADE_TREE_BY_TYPE[id] = data;
+}

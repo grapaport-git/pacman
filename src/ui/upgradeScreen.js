@@ -5,28 +5,22 @@ const CARD_H = 70;
 const COLS = 3;
 
 const POWERUP_COLORS = {
-  'speed':       '#00ff88',
-  'triple':      '#ff44ff',
-  'ghost-freeze':'#44aaff',
-  'score-boost': '#ffdd00',
-  'magnet':      '#ffaa00',
-  'shield':      '#ff4444',
-  'ghost-bomb':  '#ff8800',
-  'slow-mo':     '#88ccff',
+  speed_boost:        '#00ff88',
+  shield:              '#44aaff',
+  ghost_rush:          '#ff44ff',
+  magnet:              '#ffaa00',
+  score_multiplier:    '#ffdd00',
 };
 
 const POWERUP_ICONS = {
-  'speed':       '»',
-  'triple':      '3',
-  'ghost-freeze':'◈',
-  'score-boost': '$',
-  'magnet':      '⊛',
-  'shield':      '♦',
-  'ghost-bomb':  '⚡',
-  'slow-mo':     '◷',
+  speed_boost:     '⚡',
+  shield:           '◈',
+  ghost_rush:       '👻',
+  magnet:           '⊛',
+  score_multiplier: '$',
 };
 
-export function renderUpgradeScreen(ctx, canvasW, canvasH, coinBalance, purchasedUpgrades, UPGRADE_TREE, selectedIndex) {
+export function renderUpgradeScreen(ctx, canvasW, canvasH, coinBalance, purchasedUpgrades, UPGRADE_TREE_BY_TYPE, selectedIndex) {
   // Dark overlay
   ctx.fillStyle = 'rgba(0,0,0,0.85)';
   ctx.fillRect(0, 0, canvasW, canvasH);
@@ -42,8 +36,7 @@ export function renderUpgradeScreen(ctx, canvasW, canvasH, coinBalance, purchase
   ctx.font = 'bold 11px monospace';
   ctx.fillText(`◆ ${coinBalance} COINS`, canvasW / 2, 52);
 
-  // Power-up types in tree order
-  const types = Object.keys(UPGRADE_TREE);
+  const types = Object.keys(UPGRADE_TREE_BY_TYPE);
   const rows = Math.ceil(types.length / COLS);
   const startX = (canvasW - COLS * (CARD_W + 10)) / 2;
   const startY = 65;
@@ -54,11 +47,17 @@ export function renderUpgradeScreen(ctx, canvasW, canvasH, coinBalance, purchase
     const cx = startX + col * (CARD_W + 10);
     const cy = startY + row * (CARD_H + 10);
 
-    const owned = purchasedUpgrades.includes(type);
+    const data = UPGRADE_TREE_BY_TYPE[type];
+    const tiers = data.tiers || [];
+    const purchasedTierCount = purchasedUpgrades
+      ? tiers.filter(t => purchasedUpgrades.includes(t.id)).length
+      : 0;
+    const owned = purchasedTierCount >= tiers.length;
     const selected = i === selectedIndex;
-    const cfg = UPGRADE_TREE[type];
-    const tier = cfg.tier || 1;
-    const cost = cfg.cost || 100;
+
+    // Next upgrade to buy
+    const nextTier = tiers[purchasedTierCount];
+    const cost = nextTier ? nextTier.cost : 0;
 
     // Card background
     ctx.fillStyle = selected
@@ -89,12 +88,13 @@ export function renderUpgradeScreen(ctx, canvasW, canvasH, coinBalance, purchase
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 9px monospace';
     ctx.textAlign = 'center';
-    const label = type.toUpperCase();
-    ctx.fillText(label, cx + CARD_W / 2, cy + 44);
+    ctx.fillText(type.replace(/_/g, ' ').toUpperCase(), cx + CARD_W / 2, cy + 44);
 
-    // Tier stars
+    // Tier stars (filled = purchased)
     let stars = '';
-    for (let t = 0; t < 3; t++) stars += t < tier ? '★' : '☆';
+    for (let t = 0; t < 3; t++) {
+      stars += t < purchasedTierCount ? '★' : '☆';
+    }
     ctx.fillStyle = '#ffdd00';
     ctx.font = '8px monospace';
     ctx.fillText(stars, cx + CARD_W / 2, cy + 54);
@@ -102,7 +102,7 @@ export function renderUpgradeScreen(ctx, canvasW, canvasH, coinBalance, purchase
     // Cost or owned
     ctx.fillStyle = owned ? '#44ff88' : '#ffaa00';
     ctx.font = 'bold 9px monospace';
-    ctx.fillText(owned ? 'OWNED' : `◆ ${cost}`, cx + CARD_W / 2, cy + 64);
+    ctx.fillText(owned ? 'MAXED' : `◆ ${cost}`, cx + CARD_W / 2, cy + 64);
   });
 
   // Controls hint
