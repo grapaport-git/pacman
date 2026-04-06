@@ -68,30 +68,44 @@ export class PacMan {
       this.moveBufferTime -= dt;
     }
 
-    // Move pixel-wise along current direction
+    // Determine next tile based on current direction
     const vec = DIR_VECTORS[this.direction];
-    const speedPPS = this.speed * 8;  // pixels per second
-    this.pixelX += vec.dx * speedPPS * dt;
-    this.pixelY += vec.dy * speedPPS * dt;
+    const nextTX = this.tileX + vec.dx;
+    const nextTY = this.tileY + vec.dy;
 
-    // Tunnel wrapping
-    const tileW = 28;
-    if (this.pixelX < 0) this.pixelX += tileW * 8;
-    if (this.pixelX >= tileW * 8) this.pixelX -= tileW * 8;
+    // Only enter next tile if it's not a wall (or is tunnel)
+    const canMove = (nextTX < 0 || nextTX >= 28) || !isWallFn(nextTX, nextTY);
 
-    // Derive tile position from pixel position
-    const tX = Math.round(this.pixelX / 8);
-    const tY = Math.round(this.pixelY / 8);
+    if (canMove) {
+      // Move pixel-wise along current direction
+      const speedPPS = this.speed * 8;
+      this.pixelX += vec.dx * speedPPS * dt;
+      this.pixelY += vec.dy * speedPPS * dt;
 
-    // Update logical tile coords if we crossed into a new tile
-    const oldTX = this.tileX, oldTY = this.tileY;
-    if (tX !== oldTX || tY !== oldTY) {
-      // Snap to tile centre
-      this.pixelX = tX * 8;
-      this.pixelY = tY * 8;
-      this.tileX = tX;
-      this.tileY = tY;
-      // Try buffered turn at intersection
+      // Tunnel wrapping
+      if (this.pixelX < 0) this.pixelX += 28 * 8;
+      if (this.pixelX >= 28 * 8) this.pixelX -= 28 * 8;
+
+      // Derive tile from pixel position
+      let tX = Math.floor(this.pixelX / 8);
+      let tY = Math.floor(this.pixelY / 8);
+      // Handle tunnel wrap for tile tracking
+      if (tX < 0) tX += 28;
+      if (tX >= 28) tX -= 28;
+
+      // If tile changed, snap and try buffered turn
+      if (tX !== this.tileX || tY !== this.tileY) {
+        this.tileX = tX;
+        this.tileY = tY;
+        this.pixelX = tX * 8;
+        this.pixelY = tY * 8;
+        this._tryTurn(isWallFn);
+      }
+    } else {
+      // At wall — snap pixel position to edge of current tile
+      this.pixelX = this.tileX * 8;
+      this.pixelY = this.tileY * 8;
+      // Still try buffered turn so direction change applies at next opening
       this._tryTurn(isWallFn);
     }
   }
