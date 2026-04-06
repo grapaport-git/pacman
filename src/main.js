@@ -182,7 +182,7 @@ function handleKey(e) {
           audio.play('powerup');
         }
         // After buying upgrade, return to level select
-        game.state = 'progressionMap';
+        game.state = 'map';
       }
     );
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Enter'].includes(e.key)) {
@@ -263,7 +263,7 @@ function gameLoop(ts) {
 
   } else if (game.state === 'map') {
     clearFrame();
-    renderProgressionMap(ctx, canvasW, canvasH, mapSelectedLevel, unlockedLevels, mapSelectedLevel, animFrame);
+    renderProgressionMap(ctx, canvasW, canvasH, game.level, unlockedLevels, mapSelectedLevel);
 
   } else if (game.state === 'paused') {
     clearFrame();
